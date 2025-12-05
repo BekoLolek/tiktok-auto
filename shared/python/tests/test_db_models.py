@@ -1,8 +1,5 @@
 """Tests for database models."""
 
-import uuid
-from datetime import datetime
-
 import pytest
 
 
@@ -35,8 +32,9 @@ class TestStoryModel:
 
     def test_story_unique_reddit_id(self, db_session, sample_story_data):
         """Test that reddit_id must be unique."""
-        from shared.python.db import Story
         from sqlalchemy.exc import IntegrityError
+
+        from shared.python.db import Story
 
         story1 = Story(**sample_story_data)
         db_session.add(story1)
@@ -51,8 +49,9 @@ class TestStoryModel:
 
     def test_story_char_count_required(self, db_session):
         """Test that char_count is required."""
-        from shared.python.db import Story
         from sqlalchemy.exc import IntegrityError
+
+        from shared.python.db import Story
 
         story = Story(
             reddit_id="test_no_char_count",
@@ -72,8 +71,6 @@ class TestScriptModel:
 
     def test_create_script(self, db_session, story_factory, script_factory):
         """Test creating a script linked to a story."""
-        from shared.python.db import Script
-
         story = story_factory.create(db_session)
         script = script_factory.create(db_session, story)
 
