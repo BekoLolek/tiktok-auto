@@ -56,7 +56,7 @@ def fetch_reddit(self, subreddits: list[str], limit: int = 50) -> dict[str, Any]
 
     except Exception as e:
         logger.error(f"Reddit fetch failed: {e}")
-        raise TransientError(str(e))
+        raise TransientError(str(e)) from e
 
 
 @app.task(
@@ -90,7 +90,7 @@ def process_story(self, story_id: str) -> dict[str, Any]:
 
     except Exception as e:
         logger.error(f"Story processing failed: {e}")
-        raise TransientError(str(e))
+        raise TransientError(str(e)) from e
 
 
 @app.task(
@@ -124,7 +124,7 @@ def generate_audio(self, script_id: str) -> dict[str, Any]:
 
     except Exception as e:
         logger.error(f"Audio generation failed: {e}")
-        raise TransientError(str(e))
+        raise TransientError(str(e)) from e
 
 
 @app.task(
@@ -160,7 +160,7 @@ def render_video(self, audio_id: str) -> dict[str, Any]:
 
     except Exception as e:
         logger.error(f"Video rendering failed: {e}")
-        raise TransientError(str(e))
+        raise TransientError(str(e)) from e
 
 
 @app.task(
@@ -206,7 +206,7 @@ def upload_video(self, video_id: str, batch_id: str | None = None) -> dict[str, 
 
     except Exception as e:
         logger.error(f"Upload failed: {e}")
-        raise TransientError(str(e))
+        raise TransientError(str(e)) from e
 
 
 @app.task(bind=True)

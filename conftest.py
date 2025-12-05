@@ -2,11 +2,17 @@
 Pytest configuration and shared fixtures for TikTok Auto tests.
 """
 
+from __future__ import annotations
+
 import os
 import uuid
+from collections.abc import Generator
 from datetime import datetime
-from typing import Generator
+from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock, patch
+
+if TYPE_CHECKING:
+    from shared.python.db import Script, Story
 
 import pytest
 from sqlalchemy import create_engine
