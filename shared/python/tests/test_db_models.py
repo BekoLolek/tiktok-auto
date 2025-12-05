@@ -106,13 +106,13 @@ class TestScriptModel:
         """Test creating multiple script parts for one story."""
         story = story_factory.create(db_session)
 
-        script1 = script_factory.create(
+        script_factory.create(
             db_session, story, part_number=1, total_parts=3, hook="Part 1 hook"
         )
-        script2 = script_factory.create(
+        script_factory.create(
             db_session, story, part_number=2, total_parts=3, hook="Part 2 hook"
         )
-        script3 = script_factory.create(
+        script_factory.create(
             db_session, story, part_number=3, total_parts=3, hook="Part 3 hook"
         )
 

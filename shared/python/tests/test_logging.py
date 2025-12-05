@@ -1,9 +1,7 @@
 """Tests for logging module."""
 
 import logging
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 
 class TestSetupLogging:
@@ -103,8 +101,9 @@ class TestElasticsearchHandler:
 
     def test_handler_index_name_includes_date(self, mock_elasticsearch):
         """Test that index name includes current date."""
-        from shared.python.logging.elastic_handler import ElasticsearchHandler
         from datetime import datetime
+
+        from shared.python.logging.elastic_handler import ElasticsearchHandler
 
         handler = ElasticsearchHandler("test-service", es_host="localhost", es_port=9200)
 
