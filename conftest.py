@@ -8,7 +8,7 @@ import os
 import uuid
 from collections.abc import Generator
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 if TYPE_CHECKING:
@@ -179,7 +179,7 @@ class StoryFactory(FactoryBase):
     """Factory for creating Story test objects."""
 
     @classmethod
-    def create(cls, db_session: Session, **kwargs) -> "Story":
+    def create(cls, db_session: Session, **kwargs) -> Story:
         from shared.python.db import Story
 
         defaults = {
@@ -204,7 +204,7 @@ class ScriptFactory(FactoryBase):
     """Factory for creating Script test objects."""
 
     @classmethod
-    def create(cls, db_session: Session, story: "Story", **kwargs) -> "Script":
+    def create(cls, db_session: Session, story: Story, **kwargs) -> Script:
         from shared.python.db import Script
 
         defaults = {

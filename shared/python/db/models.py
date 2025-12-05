@@ -3,7 +3,6 @@
 import uuid
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
 from sqlalchemy import (
     Boolean,
@@ -15,7 +14,6 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
-    create_engine,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, relationship
