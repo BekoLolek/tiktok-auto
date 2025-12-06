@@ -89,8 +89,23 @@ See `.env.example` for all configuration options:
 
 ## Documentation
 
+- [Usage Guide](docs/USAGE.md) - Complete setup and operation guide
 - [Operations Runbook](docs/RUNBOOK.md) - Deployment, troubleshooting, procedures
-- [API Reference](services/approval_dashboard/README.md) - Dashboard endpoints
+
+## Scripts
+
+```bash
+./scripts/start.sh       # Start all services
+./scripts/stop.sh        # Stop services
+./scripts/status.sh      # Check service health
+./scripts/logs.sh        # View logs
+./scripts/fetch.sh       # Trigger Reddit fetch
+./scripts/cleanup.sh     # Remove old files
+./scripts/backup.sh      # Backup database
+./scripts/restore.sh     # Restore from backup
+./scripts/run-tests.sh   # Run test suite
+./scripts/setup.sh       # Initial setup
+```
 
 ## Development
 
