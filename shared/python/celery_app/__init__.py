@@ -4,7 +4,8 @@ from .app import app
 
 # Alias for backwards compatibility
 celery_app = app
-from .tasks import (
+
+from .tasks import (  # noqa: E402
     PermanentError,
     TransientError,
     fetch_reddit,

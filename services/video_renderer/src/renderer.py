@@ -12,24 +12,24 @@ try:
     # MoviePy 2.x imports
     from moviepy import (
         AudioFileClip,
+        ColorClip,
         CompositeVideoClip,
         TextClip,
         VideoFileClip,
         concatenate_videoclips,
-        ColorClip,
     )
 except ImportError:
     # MoviePy 1.x fallback
     from moviepy.editor import (
         AudioFileClip,
+        ColorClip,
         CompositeVideoClip,
         TextClip,
         VideoFileClip,
         concatenate_videoclips,
-        ColorClip,
     )
 
-from shared.python.db import Audio, Script, Video, get_session
+from shared.python.db import Audio, Video, get_session
 
 from .config import Settings, get_settings
 

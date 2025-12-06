@@ -386,7 +386,6 @@ def upload_batch(self, videos_result: dict[str, Any]) -> dict[str, Any]:
 
     video_ids = videos_result.get("video_ids", [])
     story_id = videos_result.get("story_id")
-    total_parts = videos_result.get("total_parts", len(video_ids))
 
     if not video_ids:
         return {"status": "no_videos", "uploads": []}
