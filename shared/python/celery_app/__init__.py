@@ -1,6 +1,9 @@
 """Celery app module for TikTok Auto."""
 
 from .app import app
+
+# Alias for backwards compatibility
+celery_app = app
 from .tasks import (
     PermanentError,
     TransientError,
@@ -17,6 +20,7 @@ from .tasks import (
 
 __all__ = [
     "app",
+    "celery_app",
     "TransientError",
     "PermanentError",
     "fetch_reddit",
