@@ -111,6 +111,9 @@ async def dashboard(request: Request):
             select(Story).order_by(desc(Story.created_at)).limit(10)
         ).scalars().all()
 
+        # Expunge objects so they can be used outside session
+        session.expunge_all()
+
     return templates.TemplateResponse(
         "dashboard.html",
         {
@@ -155,6 +158,9 @@ async def list_stories(
         stories = session.execute(query).scalars().all()
 
         total_pages = (total_count + settings.stories_per_page - 1) // settings.stories_per_page
+
+        # Expunge objects so they can be used outside session
+        session.expunge_all()
 
     return templates.TemplateResponse(
         "stories.html",
@@ -231,6 +237,9 @@ async def view_story(request: Request, story_id: str):
             .scalars()
             .all()
         )
+
+        # Expunge objects so they can be used outside session
+        session.expunge_all()
 
     return templates.TemplateResponse(
         "story_detail.html",
@@ -399,6 +408,9 @@ async def list_batches(
         batches = session.execute(query).scalars().all()
         total_pages = (total_count + settings.stories_per_page - 1) // settings.stories_per_page
 
+        # Expunge objects so they can be used outside session
+        session.expunge_all()
+
     return templates.TemplateResponse(
         "batches.html",
         {
@@ -464,6 +476,9 @@ async def list_downloads(
                 "story": story,
                 "script": script,
             })
+
+        # Expunge objects so they can be used outside session
+        session.expunge_all()
 
     return templates.TemplateResponse(
         "downloads.html",
