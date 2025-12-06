@@ -1,8 +1,14 @@
 """Tests for Video Renderer module."""
 
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+# Mock moviepy before importing renderer
+sys.modules["moviepy"] = MagicMock()
+sys.modules["moviepy.editor"] = MagicMock()
+sys.modules["whisper"] = MagicMock()
 
 from services.video_renderer.src.config import Settings
 from services.video_renderer.src.renderer import (
