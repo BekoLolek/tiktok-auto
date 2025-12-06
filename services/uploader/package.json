@@ -5,8 +5,8 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "test": "jest --passWithNoTests",
-    "lint": "eslint src --ext .js,.ts || true"
+    "test": "jest --passWithNoTests --testPathIgnorePatterns=node_modules",
+    "lint": "eslint src tests --ext .js,.ts || true"
   },
   "keywords": ["tiktok", "uploader", "puppeteer"],
   "author": "",
@@ -20,6 +20,7 @@
   },
   "devDependencies": {
     "jest": "^29.7.0",
-    "eslint": "^8.55.0"
+    "eslint": "^8.55.0",
+    "supertest": "^6.3.3"
   }
 }
