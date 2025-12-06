@@ -9,32 +9,8 @@ import pytest
 class TestFullPipelineFlow:
     """Test complete pipeline: Story -> Script -> Audio -> Video -> Upload."""
 
-    @pytest.fixture
-    def mock_services(self):
-        """Mock all external service dependencies."""
-        with (
-            patch("services.reddit_fetch.src.reddit_client.RedditClient") as mock_reddit,
-            patch("services.text_processor.src.processor.TextProcessor") as mock_processor,
-            patch("services.tts_service.src.synthesizer.TTSSynthesizer") as mock_tts,
-            patch("services.video_renderer.src.renderer.VideoRenderer") as mock_renderer,
-            patch("httpx.Client") as mock_httpx,
-        ):
-            # Configure mocks
-            mock_reddit.return_value.fetch_posts.return_value = []
-            mock_processor.return_value.process.return_value = ["script-1"]
-            mock_tts.return_value.synthesize.return_value = "audio-1"
-            mock_renderer.return_value.render.return_value = "video-1"
-
-            yield {
-                "reddit": mock_reddit,
-                "processor": mock_processor,
-                "tts": mock_tts,
-                "renderer": mock_renderer,
-                "httpx": mock_httpx,
-            }
-
     def test_single_part_story_pipeline(
-        self, db_session, story_factory, script_factory, mock_services
+        self, db_session, story_factory, script_factory
     ):
         """Test pipeline for a single-part story."""
         from shared.python.db import Audio, StoryStatus, Upload, UploadStatus, Video
@@ -91,7 +67,7 @@ class TestFullPipelineFlow:
         assert upload.status == UploadStatus.SUCCESS.value
 
     def test_multi_part_story_pipeline(
-        self, db_session, story_factory, script_factory, mock_services
+        self, db_session, story_factory, script_factory
     ):
         """Test pipeline for a multi-part story (split into 3 parts)."""
         from shared.python.db import (
