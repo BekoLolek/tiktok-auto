@@ -8,8 +8,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy shared library
-COPY shared/python /app/shared/python
+# Copy shared library (need full path for shared.python.* imports)
+COPY shared /app/shared
 
 # Install shared library dependencies
 RUN pip install --no-cache-dir \
