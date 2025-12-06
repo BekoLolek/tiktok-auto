@@ -16,7 +16,7 @@ app = Celery(
     broker=redis_url,
     backend=redis_url,
     include=[
-        "celery_app.tasks",
+        "shared.python.celery_app.tasks",
     ],
 )
 
@@ -41,15 +41,15 @@ app.conf.update(
     task_max_retries=3,
     # Task routing
     task_routes={
-        "celery_app.tasks.process_story": {"queue": "text_processing"},
-        "celery_app.tasks.generate_audio": {"queue": "tts"},
-        "celery_app.tasks.render_video": {"queue": "video"},
-        "celery_app.tasks.upload_video": {"queue": "upload"},
-        "celery_app.tasks.fetch_reddit": {"queue": "fetch"},
-        "celery_app.tasks.process_pending_uploads": {"queue": "upload"},
-        "celery_app.tasks.cleanup_old_files": {"queue": "maintenance"},
-        "celery_app.tasks.retry_failed_uploads": {"queue": "upload"},
-        "celery_app.tasks.process_dead_letter_queue": {"queue": "maintenance"},
+        "shared.python.celery_app.tasks.process_story": {"queue": "text_processing"},
+        "shared.python.celery_app.tasks.generate_audio": {"queue": "tts"},
+        "shared.python.celery_app.tasks.render_video": {"queue": "video"},
+        "shared.python.celery_app.tasks.upload_video": {"queue": "upload"},
+        "shared.python.celery_app.tasks.fetch_reddit": {"queue": "fetch"},
+        "shared.python.celery_app.tasks.process_pending_uploads": {"queue": "upload"},
+        "shared.python.celery_app.tasks.cleanup_old_files": {"queue": "maintenance"},
+        "shared.python.celery_app.tasks.retry_failed_uploads": {"queue": "upload"},
+        "shared.python.celery_app.tasks.process_dead_letter_queue": {"queue": "maintenance"},
     },
     # Task time limits
     task_soft_time_limit=300,  # 5 minutes soft limit
@@ -62,7 +62,7 @@ app.conf.update(
 app.conf.beat_schedule = {
     # Fetch new stories from Reddit (configurable via env)
     "fetch-reddit-stories": {
-        "task": "celery_app.tasks.scheduled_fetch_reddit",
+        "task": "shared.python.celery_app.tasks.scheduled_fetch_reddit",
         "schedule": crontab(
             minute=os.getenv("REDDIT_FETCH_MINUTE", "0"),
             hour=os.getenv("REDDIT_FETCH_HOUR", "*/2"),  # Every 2 hours by default
@@ -71,25 +71,25 @@ app.conf.beat_schedule = {
     },
     # Process pending uploads (check for ready videos)
     "process-pending-uploads": {
-        "task": "celery_app.tasks.process_pending_uploads",
+        "task": "shared.python.celery_app.tasks.process_pending_uploads",
         "schedule": crontab(minute="*/15"),  # Every 15 minutes
         "args": (),
     },
     # Retry failed uploads
     "retry-failed-uploads": {
-        "task": "celery_app.tasks.retry_failed_uploads",
+        "task": "shared.python.celery_app.tasks.retry_failed_uploads",
         "schedule": crontab(minute="30", hour="*/1"),  # Every hour at :30
         "args": (),
     },
     # Cleanup old processed files
     "cleanup-old-files": {
-        "task": "celery_app.tasks.cleanup_old_files",
+        "task": "shared.python.celery_app.tasks.cleanup_old_files",
         "schedule": crontab(minute="0", hour="3"),  # Daily at 3 AM
         "args": (),
     },
     # Process dead letter queue
     "process-dead-letter-queue": {
-        "task": "celery_app.tasks.process_dead_letter_queue",
+        "task": "shared.python.celery_app.tasks.process_dead_letter_queue",
         "schedule": crontab(minute="*/30"),  # Every 30 minutes
         "args": (),
     },

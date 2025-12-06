@@ -370,7 +370,7 @@ services:
       context: .
       dockerfile: services/text_processor/Dockerfile
     container_name: tiktok-auto-celery-worker
-    command: celery -A celery_app.app worker --loglevel=info --concurrency=2
+    command: celery -A shared.python.celery_app.app worker --loglevel=info --concurrency=2
     environment:
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
@@ -389,7 +389,7 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
       - ./data:/data
-      - ./shared/python:/app/shared
+      - ./shared:/app/shared
     depends_on:
       postgres:
         condition: service_healthy
@@ -403,7 +403,7 @@ services:
       context: .
       dockerfile: services/text_processor/Dockerfile
     container_name: tiktok-auto-celery-beat
-    command: celery -A celery_app.app beat --loglevel=info
+    command: celery -A shared.python.celery_app.app beat --loglevel=info
     environment:
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432

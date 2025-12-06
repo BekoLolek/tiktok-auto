@@ -7,7 +7,7 @@ cd /d "%~dp0.."
 echo Triggering Reddit Fetch...
 echo.
 
-docker compose exec -T celery-worker python -c "from shared.python.celery_app import celery_app; result = celery_app.send_task('celery_app.tasks.scheduled_fetch_reddit'); print(f'Task queued: {result.id}')"
+docker compose exec -T celery-worker python -c "from shared.python.celery_app import celery_app; result = celery_app.send_task('shared.python.celery_app.tasks.scheduled_fetch_reddit'); print(f'Task queued: {result.id}')"
 
 echo.
 echo Fetch task queued!
