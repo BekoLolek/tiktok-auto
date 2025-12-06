@@ -13,7 +13,7 @@ def main():
     setup_logging("approval-dashboard")
 
     uvicorn.run(
-        "services.approval_dashboard.src.app:app",
+        "src.app:app",
         host=settings.host,
         port=settings.port,
         reload=settings.debug,
