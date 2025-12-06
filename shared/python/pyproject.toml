@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tiktok-auto-shared"
+version = "0.1.0"
+description = "Shared library for TikTok Auto pipeline"
+requires-python = ">=3.11"
+dependencies = [
+    "sqlalchemy>=2.0.0",
+    "psycopg2-binary>=2.9.0",
+    "celery>=5.3.0",
+    "redis>=5.0.0",
+    "elasticsearch>=8.11.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
