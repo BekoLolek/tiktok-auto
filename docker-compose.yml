@@ -94,8 +94,8 @@ services:
 
   dashboard:
     build:
-      context: ./services/approval-dashboard
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/approval_dashboard/Dockerfile
     container_name: tiktok-auto-dashboard
     environment:
       - POSTGRES_HOST=postgres
@@ -124,8 +124,8 @@ services:
 
   reddit-fetch:
     build:
-      context: ./services/reddit-fetch
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/reddit_fetch/Dockerfile
     container_name: tiktok-auto-reddit-fetch
     environment:
       - POSTGRES_HOST=postgres
@@ -153,8 +153,8 @@ services:
 
   text-processor:
     build:
-      context: ./services/text-processor
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/text_processor/Dockerfile
     container_name: tiktok-auto-text-processor
     environment:
       - POSTGRES_HOST=postgres
@@ -184,8 +184,8 @@ services:
 
   tts-service:
     build:
-      context: ./services/tts-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/tts_service/Dockerfile
     container_name: tiktok-auto-tts-service
     environment:
       - POSTGRES_HOST=postgres
@@ -214,8 +214,8 @@ services:
 
   video-renderer:
     build:
-      context: ./services/video-renderer
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/video_renderer/Dockerfile
     container_name: tiktok-auto-video-renderer
     environment:
       - POSTGRES_HOST=postgres
@@ -276,8 +276,8 @@ services:
 
   celery-worker:
     build:
-      context: ./services/text-processor
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/text_processor/Dockerfile
     container_name: tiktok-auto-celery-worker
     command: celery -A celery_app.app worker --loglevel=info --concurrency=2
     environment:
@@ -309,8 +309,8 @@ services:
 
   celery-beat:
     build:
-      context: ./services/text-processor
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/text_processor/Dockerfile
     container_name: tiktok-auto-celery-beat
     command: celery -A celery_app.app beat --loglevel=info
     environment:

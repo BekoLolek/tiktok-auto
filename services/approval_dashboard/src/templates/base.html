@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}TikTok Auto{% endblock %}</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            line-height: 1.6;
+        }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        nav {
+            background: #1a1a2e;
+            padding: 15px 20px;
+            margin-bottom: 20px;
+        }
+        nav a {
+            color: #fff;
+            text-decoration: none;
+            margin-right: 20px;
+            padding: 8px 16px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        nav a:hover, nav a.active { background: #16213e; }
+        .card {
+            background: #fff;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .card h2 { margin-bottom: 15px; color: #1a1a2e; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; }
+        .stat {
+            text-align: center;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .stat .number { font-size: 2em; font-weight: bold; }
+        .stat .label { color: #666; font-size: 0.9em; }
+        .stat.pending .number { color: #f39c12; }
+        .stat.approved .number { color: #3498db; }
+        .stat.processing .number { color: #9b59b6; }
+        .stat.completed .number { color: #27ae60; }
+        .stat.failed .number { color: #e74c3c; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background: #f8f9fa; font-weight: 600; }
+        tr:hover { background: #f8f9fa; }
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: 500;
+        }
+        .badge-pending { background: #fff3cd; color: #856404; }
+        .badge-approved { background: #cce5ff; color: #004085; }
+        .badge-processing { background: #e2d5f1; color: #6f42c1; }
+        .badge-completed { background: #d4edda; color: #155724; }
+        .badge-failed { background: #f8d7da; color: #721c24; }
+        .badge-rejected { background: #e2e3e5; color: #383d41; }
+        .btn {
+            display: inline-block;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+            font-size: 0.9em;
+            transition: opacity 0.2s;
+        }
+        .btn:hover { opacity: 0.9; }
+        .btn-primary { background: #3498db; color: #fff; }
+        .btn-success { background: #27ae60; color: #fff; }
+        .btn-danger { background: #e74c3c; color: #fff; }
+        .btn-secondary { background: #6c757d; color: #fff; }
+        .btn-sm { padding: 4px 8px; font-size: 0.8em; }
+        .pagination { display: flex; gap: 5px; margin-top: 20px; justify-content: center; }
+        .pagination a, .pagination span {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            text-decoration: none;
+            color: #333;
+        }
+        .pagination a:hover { background: #f0f0f0; }
+        .pagination .active { background: #3498db; color: #fff; border-color: #3498db; }
+        .filters { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .filters select, .filters input {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .content-preview {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            font-size: 0.9em;
+        }
+        .actions { display: flex; gap: 10px; margin-top: 15px; }
+        .log-entry { padding: 10px; border-left: 3px solid #ddd; margin-bottom: 10px; }
+        .log-entry.DEBUG { border-color: #6c757d; }
+        .log-entry.INFO { border-color: #17a2b8; }
+        .log-entry.WARNING { border-color: #ffc107; }
+        .log-entry.ERROR { border-color: #dc3545; }
+        .log-entry.CRITICAL { border-color: #721c24; background: #f8d7da; }
+        .log-meta { font-size: 0.8em; color: #666; }
+        .alert { padding: 15px; border-radius: 4px; margin-bottom: 15px; }
+        .alert-info { background: #cce5ff; color: #004085; }
+        .alert-warning { background: #fff3cd; color: #856404; }
+        .alert-danger { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <nav>
+        <a href="/" {% if request.url.path == '/' %}class="active"{% endif %}>Dashboard</a>
+        <a href="/stories" {% if '/stories' in request.url.path %}class="active"{% endif %}>Stories</a>
+        <a href="/batches" {% if '/batches' in request.url.path %}class="active"{% endif %}>Batches</a>
+        <a href="/logs" {% if '/logs' in request.url.path %}class="active"{% endif %}>Logs</a>
+    </nav>
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+</body>
+</html>

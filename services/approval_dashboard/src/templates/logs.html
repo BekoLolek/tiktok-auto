@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Logs - TikTok Auto{% endblock %}
+{% block content %}
+<div class="card">
+    <h2>Logs ({{ total_count }})</h2>
+
+    <div class="filters">
+        <form method="get" style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <select name="service">
+                <option value="">All Services</option>
+                {% for service in services %}
+                <option value="{{ service }}" {% if current_service == service %}selected{% endif %}>{{ service }}</option>
+                {% endfor %}
+            </select>
+            <select name="level">
+                <option value="">All Levels</option>
+                {% for level in levels %}
+                <option value="{{ level }}" {% if current_level == level %}selected{% endif %}>{{ level }}</option>
+                {% endfor %}
+            </select>
+            <input type="number" name="story_id" placeholder="Story ID" value="{{ current_story_id or '' }}">
+            <button type="submit" class="btn btn-primary">Filter</button>
+        </form>
+    </div>
+
+    {% if logs %}
+    {% for log in logs %}
+    <div class="log-entry {{ log.level }}">
+        <div class="log-meta">
+            <span class="badge badge-{{ log.level | lower if log.level in ['INFO', 'WARNING', 'ERROR'] else 'secondary' }}">{{ log.level }}</span>
+            <strong>{{ log.service }}</strong>
+            <span>{{ log['@timestamp'] }}</span>
+            {% if log.story_id %}
+            <a href="/stories/{{ log.story_id }}">[Story #{{ log.story_id }}]</a>
+            {% endif %}
+        </div>
+        <div style="margin-top: 5px;">{{ log.message }}</div>
+        {% if log.error %}
+        <details style="margin-top: 5px;">
+            <summary>Error Details</summary>
+            <pre style="background: #f8f9fa; padding: 10px; overflow-x: auto;">{{ log.error }}</pre>
+        </details>
+        {% endif %}
+    </div>
+    {% endfor %}
+
+    {% if total_pages > 1 %}
+    <div class="pagination">
+        {% if current_page > 1 %}
+        <a href="?service={{ current_service or '' }}&level={{ current_level or '' }}&story_id={{ current_story_id or '' }}&page={{ current_page - 1 }}">Prev</a>
+        {% endif %}
+
+        {% for p in range(1, total_pages + 1) %}
+            {% if p == current_page %}
+            <span class="active">{{ p }}</span>
+            {% elif p <= 3 or p > total_pages - 2 or (p >= current_page - 1 and p <= current_page + 1) %}
+            <a href="?service={{ current_service or '' }}&level={{ current_level or '' }}&story_id={{ current_story_id or '' }}&page={{ p }}">{{ p }}</a>
+            {% elif p == 4 or p == total_pages - 2 %}
+            <span>...</span>
+            {% endif %}
+        {% endfor %}
+
+        {% if current_page < total_pages %}
+        <a href="?service={{ current_service or '' }}&level={{ current_level or '' }}&story_id={{ current_story_id or '' }}&page={{ current_page + 1 }}">Next</a>
+        {% endif %}
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="alert alert-info">
+        No logs found. {% if not current_service and not current_level %}Logs will appear here once services start processing.{% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

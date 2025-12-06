@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Stories - TikTok Auto{% endblock %}
+{% block content %}
+<div class="card">
+    <h2>Stories ({{ total_count }})</h2>
+
+    <div class="filters">
+        <form method="get" style="display: flex; gap: 10px;">
+            <select name="status" onchange="this.form.submit()">
+                <option value="">All Statuses</option>
+                {% for status in statuses %}
+                <option value="{{ status }}" {% if current_status == status %}selected{% endif %}>{{ status | title }}</option>
+                {% endfor %}
+            </select>
+        </form>
+    </div>
+
+    {% if stories %}
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Title</th>
+                <th>Subreddit</th>
+                <th>Chars</th>
+                <th>Upvotes</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for story in stories %}
+            <tr>
+                <td>{{ story.id }}</td>
+                <td><a href="/stories/{{ story.id }}">{{ story.title | truncate(40) }}</a></td>
+                <td>r/{{ story.subreddit }}</td>
+                <td>{{ story.char_count }}</td>
+                <td>{{ story.upvotes }}</td>
+                <td><span class="badge badge-{{ story.status }}">{{ story.status }}</span></td>
+                <td>{{ story.created_at | datetime }}</td>
+                <td>
+                    <a href="/stories/{{ story.id }}" class="btn btn-primary btn-sm">View</a>
+                    {% if story.status == 'pending' %}
+                    <form method="post" action="/stories/{{ story.id }}/approve" style="display: inline;">
+                        <button type="submit" class="btn btn-success btn-sm">Approve</button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {% if total_pages > 1 %}
+    <div class="pagination">
+        {% if current_page > 1 %}
+        <a href="?status={{ current_status or '' }}&page={{ current_page - 1 }}">Prev</a>
+        {% endif %}
+
+        {% for p in range(1, total_pages + 1) %}
+            {% if p == current_page %}
+            <span class="active">{{ p }}</span>
+            {% elif p <= 3 or p > total_pages - 2 or (p >= current_page - 1 and p <= current_page + 1) %}
+            <a href="?status={{ current_status or '' }}&page={{ p }}">{{ p }}</a>
+            {% elif p == 4 or p == total_pages - 2 %}
+            <span>...</span>
+            {% endif %}
+        {% endfor %}
+
+        {% if current_page < total_pages %}
+        <a href="?status={{ current_status or '' }}&page={{ current_page + 1 }}">Next</a>
+        {% endif %}
+    </div>
+    {% endif %}
+    {% else %}
+    <p>No stories found.</p>
+    {% endif %}
+</div>
+{% endblock %}

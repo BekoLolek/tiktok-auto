@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - TikTok Auto{% endblock %}
+{% block content %}
+<div class="card">
+    <h2>Pipeline Status</h2>
+    <div class="stats">
+        <div class="stat pending">
+            <div class="number">{{ pending_count }}</div>
+            <div class="label">Pending</div>
+        </div>
+        <div class="stat approved">
+            <div class="number">{{ approved_count }}</div>
+            <div class="label">Approved</div>
+        </div>
+        <div class="stat processing">
+            <div class="number">{{ processing_count }}</div>
+            <div class="label">Processing</div>
+        </div>
+        <div class="stat completed">
+            <div class="number">{{ completed_count }}</div>
+            <div class="label">Completed</div>
+        </div>
+        <div class="stat failed">
+            <div class="number">{{ failed_count }}</div>
+            <div class="label">Failed</div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Recent Stories</h2>
+    {% if recent_stories %}
+    <table>
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Subreddit</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for story in recent_stories %}
+            <tr>
+                <td>{{ story.title | truncate(50) }}</td>
+                <td>r/{{ story.subreddit }}</td>
+                <td><span class="badge badge-{{ story.status }}">{{ story.status }}</span></td>
+                <td>{{ story.created_at | datetime }}</td>
+                <td>
+                    <a href="/stories/{{ story.id }}" class="btn btn-primary btn-sm">View</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>No stories yet. Configure Reddit credentials and wait for the fetcher to run.</p>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h2>Quick Actions</h2>
+    <div class="actions">
+        <a href="/stories?status=pending" class="btn btn-primary">Review Pending Stories</a>
+        <a href="/stories?status=failed" class="btn btn-danger">View Failed Stories</a>
+        <a href="/logs?level=ERROR" class="btn btn-secondary">View Error Logs</a>
+    </div>
+</div>
+{% endblock %}

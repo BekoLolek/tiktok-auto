@@ -151,7 +151,7 @@ jobs:
             service_name=$(basename "$service")
             if [ -f "$service/Dockerfile" ]; then
               echo "Building $service_name..."
-              docker build -t "tiktok-auto-$service_name:test" "$service"
+              docker build -t "tiktok-auto-$service_name:test" -f "$service/Dockerfile" .
             fi
           done
         continue-on-error: true

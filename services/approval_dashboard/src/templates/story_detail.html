@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}{{ story.title }} - TikTok Auto{% endblock %}
+{% block content %}
+<div class="card">
+    <h2>{{ story.title }}</h2>
+
+    <table>
+        <tr><th>ID</th><td>{{ story.id }}</td></tr>
+        <tr><th>Reddit ID</th><td><a href="{{ story.url }}" target="_blank">{{ story.reddit_id }}</a></td></tr>
+        <tr><th>Subreddit</th><td>r/{{ story.subreddit }}</td></tr>
+        <tr><th>Author</th><td>{{ story.author }}</td></tr>
+        <tr><th>Status</th><td><span class="badge badge-{{ story.status }}">{{ story.status }}</span></td></tr>
+        <tr><th>Characters</th><td>{{ story.char_count }}</td></tr>
+        <tr><th>Upvotes</th><td>{{ story.upvotes }}</td></tr>
+        <tr><th>Created</th><td>{{ story.created_at | datetime }}</td></tr>
+        {% if story.error_message %}
+        <tr><th>Error</th><td class="alert alert-danger">{{ story.error_message }}</td></tr>
+        {% endif %}
+        {% if story.rejection_reason %}
+        <tr><th>Rejection Reason</th><td>{{ story.rejection_reason }}</td></tr>
+        {% endif %}
+    </table>
+
+    <div class="actions">
+        {% if story.status == 'pending' %}
+        <form method="post" action="/stories/{{ story.id }}/approve" style="display: inline;">
+            <button type="submit" class="btn btn-success">Approve</button>
+        </form>
+        <form method="post" action="/stories/{{ story.id }}/reject" style="display: inline;">
+            <input type="text" name="reason" placeholder="Rejection reason (optional)">
+            <button type="submit" class="btn btn-danger">Reject</button>
+        </form>
+        {% elif story.status == 'failed' %}
+        <form method="post" action="/stories/{{ story.id }}/retry">
+            <button type="submit" class="btn btn-primary">Retry Processing</button>
+        </form>
+        {% endif %}
+        <a href="/logs?story_id={{ story.id }}" class="btn btn-secondary">View Logs</a>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Content</h2>
+    <div class="content-preview">{{ story.content }}</div>
+</div>
+
+{% if scripts %}
+<div class="card">
+    <h2>Scripts ({{ scripts | length }})</h2>
+    {% for script in scripts %}
+    <div style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 4px;">
+        <h4>Part {{ script.part_number }} of {{ script.total_parts }}</h4>
+        {% if script.hook %}
+        <p><strong>Hook:</strong> {{ script.hook }}</p>
+        {% endif %}
+        {% if script.cta %}
+        <p><strong>CTA:</strong> {{ script.cta }}</p>
+        {% endif %}
+        <details>
+            <summary>View Script Content</summary>
+            <div class="content-preview" style="margin-top: 10px;">{{ script.content }}</div>
+        </details>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if batches %}
+<div class="card">
+    <h2>Batches</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Batch ID</th>
+                <th>Status</th>
+                <th>Parts</th>
+                <th>Created</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for batch in batches %}
+            <tr>
+                <td>{{ batch.id }}</td>
+                <td><span class="badge badge-{{ batch.status }}">{{ batch.status }}</span></td>
+                <td>{{ batch.completed_parts }} / {{ batch.total_parts }}</td>
+                <td>{{ batch.created_at | datetime }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+{% endblock %}
