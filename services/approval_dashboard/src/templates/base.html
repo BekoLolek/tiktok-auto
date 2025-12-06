@@ -124,7 +124,8 @@
 <body>
     <nav>
         <a href="/" {% if request.url.path == '/' %}class="active"{% endif %}>Dashboard</a>
-        <a href="/stories" {% if '/stories' in request.url.path %}class="active"{% endif %}>Stories</a>
+        <a href="/stories" {% if '/stories' in request.url.path and '/new' not in request.url.path %}class="active"{% endif %}>Stories</a>
+        <a href="/stories/new" {% if '/stories/new' in request.url.path %}class="active"{% endif %}>+ Submit Story</a>
         <a href="/batches" {% if '/batches' in request.url.path %}class="active"{% endif %}>Batches</a>
         <a href="/downloads" {% if '/downloads' in request.url.path %}class="active"{% endif %}>Downloads</a>
         <a href="/logs" {% if '/logs' in request.url.path %}class="active"{% endif %}>Logs</a>

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -169,8 +170,54 @@ async def list_stories(
     )
 
 
+@app.get("/stories/new", response_class=HTMLResponse)
+async def new_story_form(request: Request):
+    """Display form for manual story submission."""
+    return templates.TemplateResponse(
+        "story_submit.html",
+        {
+            "request": request,
+        },
+    )
+
+
+@app.post("/stories/new")
+async def submit_story(
+    title: str = Form(...),
+    content: str = Form(...),
+    subreddit: str = Form(default="manual"),
+    author: str = Form(default=""),
+):
+    """Handle manual story submission."""
+    # Generate unique ID for manual stories
+    manual_id = f"manual_{uuid.uuid4().hex[:12]}"
+
+    # Calculate character count
+    char_count = len(content)
+
+    with get_session() as session:
+        story = Story(
+            reddit_id=manual_id,
+            subreddit=subreddit.strip() or "manual",
+            title=title.strip(),
+            content=content.strip(),
+            author=author.strip() if author else None,
+            score=0,
+            url=None,
+            char_count=char_count,
+            status=StoryStatus.PENDING.value,
+        )
+        session.add(story)
+        session.commit()
+
+        story_id = story.id
+        logger.info(f"Manual story submitted: {story_id} - {title[:50]}")
+
+    return RedirectResponse(url=f"/stories/{story_id}", status_code=303)
+
+
 @app.get("/stories/{story_id}", response_class=HTMLResponse)
-async def view_story(request: Request, story_id: int):
+async def view_story(request: Request, story_id: str):
     """View a single story with full content."""
     with get_session() as session:
         story = session.get(Story, story_id)
@@ -197,7 +244,7 @@ async def view_story(request: Request, story_id: int):
 
 
 @app.post("/stories/{story_id}/approve")
-async def approve_story(story_id: int):
+async def approve_story(story_id: str):
     """Approve a story for processing."""
     with get_session() as session:
         story = session.get(Story, story_id)
@@ -226,7 +273,7 @@ async def approve_story(story_id: int):
 
 
 @app.post("/stories/{story_id}/reject")
-async def reject_story(story_id: int, reason: str = Form(default="")):
+async def reject_story(story_id: str, reason: str = Form(default="")):
     """Reject a story."""
     with get_session() as session:
         story = session.get(Story, story_id)
@@ -247,7 +294,7 @@ async def reject_story(story_id: int, reason: str = Form(default="")):
 
 
 @app.post("/stories/{story_id}/retry")
-async def retry_story(story_id: int):
+async def retry_story(story_id: str):
     """Retry a failed story."""
     with get_session() as session:
         story = session.get(Story, story_id)

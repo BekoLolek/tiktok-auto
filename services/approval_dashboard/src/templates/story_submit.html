@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Submit Story - TikTok Auto{% endblock %}
+{% block content %}
+<div class="card">
+    <h2>Submit Story Manually</h2>
+    <p style="color: #666; margin-bottom: 20px;">
+        Paste a story below to add it to the processing pipeline. The story will be queued for review before processing.
+    </p>
+
+    <form method="post" action="/stories/new">
+        <div style="margin-bottom: 15px;">
+            <label for="title" style="display: block; margin-bottom: 5px; font-weight: 500;">Title *</label>
+            <input type="text" id="title" name="title" required
+                   style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 1em;"
+                   placeholder="Enter the story title">
+        </div>
+
+        <div style="margin-bottom: 15px;">
+            <label for="content" style="display: block; margin-bottom: 5px; font-weight: 500;">Story Content *</label>
+            <textarea id="content" name="content" required rows="15"
+                      style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 1em; font-family: inherit; resize: vertical;"
+                      placeholder="Paste the full story content here..."></textarea>
+            <small style="color: #666;">Character count: <span id="char-count">0</span></small>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+            <div>
+                <label for="subreddit" style="display: block; margin-bottom: 5px; font-weight: 500;">Source/Category</label>
+                <input type="text" id="subreddit" name="subreddit" value="manual"
+                       style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 1em;"
+                       placeholder="e.g., nosleep, shortscarystories, manual">
+            </div>
+
+            <div>
+                <label for="author" style="display: block; margin-bottom: 5px; font-weight: 500;">Author (optional)</label>
+                <input type="text" id="author" name="author"
+                       style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 1em;"
+                       placeholder="Original author name">
+            </div>
+        </div>
+
+        <div class="actions">
+            <button type="submit" class="btn btn-success">Submit Story</button>
+            <a href="/stories" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Tips for Good Stories</h2>
+    <ul style="margin-left: 20px; color: #666;">
+        <li>Stories should be between 500 and 15,000 characters for best results</li>
+        <li>Horror/thriller stories work well for TikTok engagement</li>
+        <li>Stories with natural cliffhangers can be split into multiple parts</li>
+        <li>Avoid stories with excessive dialogue or complex formatting</li>
+        <li>First-person narratives tend to perform better as narrations</li>
+    </ul>
+</div>
+
+<script>
+    const contentEl = document.getElementById('content');
+    const charCountEl = document.getElementById('char-count');
+
+    function updateCharCount() {
+        const count = contentEl.value.length;
+        charCountEl.textContent = count.toLocaleString();
+
+        if (count < 500) {
+            charCountEl.style.color = '#e74c3c';
+        } else if (count > 15000) {
+            charCountEl.style.color = '#e74c3c';
+        } else {
+            charCountEl.style.color = '#27ae60';
+        }
+    }
+
+    contentEl.addEventListener('input', updateCharCount);
+    updateCharCount();
+</script>
+{% endblock %}

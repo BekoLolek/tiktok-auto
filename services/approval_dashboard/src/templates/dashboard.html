@@ -55,13 +55,14 @@
         </tbody>
     </table>
     {% else %}
-    <p>No stories yet. Configure Reddit credentials and wait for the fetcher to run.</p>
+    <p>No stories yet. <a href="/stories/new">Submit a story manually</a> or configure Reddit credentials.</p>
     {% endif %}
 </div>
 
 <div class="card">
     <h2>Quick Actions</h2>
     <div class="actions">
+        <a href="/stories/new" class="btn btn-success">Submit New Story</a>
         <a href="/stories?status=pending" class="btn btn-primary">Review Pending Stories</a>
         <a href="/stories?status=failed" class="btn btn-danger">View Failed Stories</a>
         <a href="/logs?level=ERROR" class="btn btn-secondary">View Error Logs</a>
