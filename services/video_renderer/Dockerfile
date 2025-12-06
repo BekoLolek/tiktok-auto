@@ -14,6 +14,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Allow ImageMagick to process text
 RUN sed -i 's/rights="none" pattern="@\*"/rights="read|write" pattern="@*"/' /etc/ImageMagick-6/policy.xml || true
 
+# Install setuptools (required for shared package)
+RUN pip install --no-cache-dir setuptools wheel
+
 # Copy shared library first
 COPY shared/python /app/shared/python
 

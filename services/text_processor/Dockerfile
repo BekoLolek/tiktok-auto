@@ -8,6 +8,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Install setuptools (required for shared package)
+RUN pip install --no-cache-dir setuptools wheel
+
 # Copy shared library first
 COPY shared/python /app/shared/python
 
