@@ -112,11 +112,13 @@ class TestRedditFetcher:
 
     def test_is_quality_content_accepts_good_content(self, fetcher):
         """Test that quality content is accepted."""
-        good_content = """
-        The old house at the end of Maple Street had been abandoned for years.
-        Nobody knew exactly when the last occupants had left, but everyone in
-        town agreed it was better that way. Some places are meant to be empty.
-        """
+        good_content = (
+            "The old house at the end of Maple Street had been abandoned for years. "
+            "Nobody knew exactly when the last occupants had left, but everyone in "
+            "town agreed it was better that way. Some places are meant to be empty. "
+            "The neighborhood children used to dare each other to approach the "
+            "crumbling porch, but none ever made it past the rusted gate."
+        )
         assert fetcher._is_quality_content(good_content) is True
 
     def test_passes_filters_rejects_stickied(self, fetcher):

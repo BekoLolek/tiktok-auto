@@ -63,19 +63,18 @@ class TestPipelineDataFlow:
         story = story_factory.create(db_session)
         script = script_factory.create(db_session, story)
 
-        # Create audio record
+        # Create audio record with correct field names per model
         audio = Audio(
             script_id=script.id,
             file_path="/data/audio/test.wav",
-            duration=120.5,
-            sample_rate=22050,
-            voice="en_US-lessac-medium",
+            duration_seconds=120.5,
+            voice_model="en_US-lessac-medium",
         )
         db_session.add(audio)
         db_session.flush()
 
         assert audio.script_id == script.id
-        assert audio.duration == 120.5
+        assert audio.duration_seconds == 120.5
 
     def test_batch_tracks_multi_part_uploads(self, db_session, story_factory):
         """Test that batches track multi-part story uploads."""
@@ -113,7 +112,7 @@ class TestCeleryTaskSignatures:
 
     def test_celery_app_configuration(self):
         """Test that Celery app is properly configured."""
-        from shared.python.celery_app import celery_app
+        from shared.python.celery_app import app as celery_app
 
         assert celery_app is not None
         assert celery_app.main == "tiktok_auto"
@@ -185,25 +184,33 @@ class TestServiceCommunication:
 
     def test_upload_status_trackable(self, db_session, story_factory, script_factory):
         """Test that upload status can be tracked through the pipeline."""
-        from shared.python.db import Upload, UploadStatus, Video
+        from shared.python.db import Audio, Upload, UploadStatus, Video
 
         story = story_factory.create(db_session)
         script = script_factory.create(db_session, story)
 
-        # Create video record first
-        video = Video(
+        # Create audio record first (chain: script -> audio -> video -> upload)
+        audio = Audio(
             script_id=script.id,
+            file_path="/data/audio/test.wav",
+            duration_seconds=120.0,
+        )
+        db_session.add(audio)
+        db_session.flush()
+
+        # Create video record linked to audio
+        video = Video(
+            audio_id=audio.id,
             file_path="/data/videos/test.mp4",
-            duration=120.0,
-            width=1080,
-            height=1920,
+            duration_seconds=120.0,
+            resolution="1080x1920",
         )
         db_session.add(video)
         db_session.flush()
 
-        # Create upload record
+        # Create upload record linked to video
         upload = Upload(
-            script_id=script.id,
+            video_id=video.id,
             platform="tiktok",
             status=UploadStatus.PENDING.value,
         )
@@ -215,11 +222,11 @@ class TestServiceCommunication:
         db_session.flush()
 
         upload.status = UploadStatus.SUCCESS.value
-        upload.platform_id = "tiktok_123456"
+        upload.platform_video_id = "tiktok_123456"
         db_session.commit()
 
         assert upload.status == UploadStatus.SUCCESS.value
-        assert upload.platform_id == "tiktok_123456"
+        assert upload.platform_video_id == "tiktok_123456"
 
 
 class TestErrorPropagation:

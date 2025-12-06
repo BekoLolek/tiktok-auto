@@ -199,9 +199,10 @@ class TestTextProcessor:
         assert len(result) >= 1
 
     @patch("services.text_processor.src.processor.get_session")
+    @patch.object(TextProcessor, "_save_scripts")
     @patch.object(TextProcessor, "_process_single_part")
     def test_process_story_single_part(
-        self, mock_process, mock_get_session, processor
+        self, mock_process, mock_save, mock_get_session, processor
     ):
         """Test processing a single-part story."""
         mock_session = MagicMock()
@@ -230,9 +231,10 @@ class TestTextProcessor:
         mock_process.assert_called_once_with(mock_story)
 
     @patch("services.text_processor.src.processor.get_session")
+    @patch.object(TextProcessor, "_save_scripts")
     @patch.object(TextProcessor, "_process_multi_part")
     def test_process_story_multi_part(
-        self, mock_process, mock_get_session, processor
+        self, mock_process, mock_save, mock_get_session, processor
     ):
         """Test processing a multi-part story."""
         mock_session = MagicMock()
