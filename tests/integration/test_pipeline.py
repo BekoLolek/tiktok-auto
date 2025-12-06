@@ -271,13 +271,15 @@ class TestErrorPropagation:
         db_session.flush()
 
         # One part failed
+        import json
+
         batch.status = BatchStatus.PARTIAL.value
-        batch.failed_parts = [{"part_number": 3, "reason": "Upload timeout"}]
+        batch.failed_parts = json.dumps([{"part_number": 3, "reason": "Upload timeout"}])
         db_session.commit()
 
         assert batch.status == BatchStatus.PARTIAL.value
         assert batch.completed_parts == 2
-        assert len(batch.failed_parts) == 1
+        assert len(json.loads(batch.failed_parts)) == 1
 
 
 class TestDataConsistency:

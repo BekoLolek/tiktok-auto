@@ -1,6 +1,7 @@
 """Celery tasks for TikTok Auto pipeline."""
 
 import logging
+import os
 from typing import Any
 
 from celery import chain, group
@@ -357,3 +358,278 @@ def upload_batch(self, videos_result: dict[str, Any]) -> dict[str, Any]:
         "successful": successful,
         "total": len(video_ids),
     }
+
+
+# =============================================================================
+# Scheduled Tasks
+# =============================================================================
+
+
+@app.task(bind=True)
+def scheduled_fetch_reddit(self) -> dict[str, Any]:
+    """
+    Scheduled task to fetch new stories from Reddit.
+
+    Reads subreddit list from environment or uses defaults.
+    """
+    import os
+
+    subreddits_env = os.getenv("REDDIT_SUBREDDITS", "scifi,fantasy,tifu,nosleep")
+    subreddits = [s.strip() for s in subreddits_env.split(",")]
+    limit = int(os.getenv("REDDIT_FETCH_LIMIT", "25"))
+
+    logger.info(f"Scheduled fetch from subreddits: {subreddits}")
+    return fetch_reddit.apply_async(args=[subreddits, limit]).get()
+
+
+@app.task(bind=True)
+def process_pending_uploads(self) -> dict[str, Any]:
+    """
+    Process videos that are ready for upload.
+
+    Checks for videos with completed rendering that haven't been uploaded yet.
+    """
+    logger.info("Processing pending uploads...")
+
+    from shared.python.db import Upload, UploadStatus, Video, get_session
+
+    processed = 0
+    with get_session() as session:
+        # Find videos without uploads or with pending uploads
+        from sqlalchemy import select
+
+        # Get videos that have no upload record yet
+        subquery = select(Upload.video_id)
+        stmt = select(Video).where(~Video.id.in_(subquery))
+        videos_without_uploads = session.execute(stmt).scalars().all()
+
+        for video in videos_without_uploads:
+            logger.info(f"Queuing upload for video: {video.id}")
+            upload_video.delay(str(video.id))
+            processed += 1
+
+        # Also check pending uploads
+        pending_uploads = (
+            session.query(Upload).filter_by(status=UploadStatus.PENDING.value).limit(10).all()
+        )
+
+        for upload in pending_uploads:
+            logger.info(f"Requeuing pending upload: {upload.id}")
+            upload_video.delay(str(upload.video_id))
+            processed += 1
+
+    return {"status": "success", "processed": processed}
+
+
+@app.task(bind=True)
+def retry_failed_uploads(self) -> dict[str, Any]:
+    """
+    Retry uploads that failed but haven't exceeded max retries.
+    """
+    logger.info("Retrying failed uploads...")
+
+    from shared.python.db import Upload, UploadStatus, get_session
+
+    max_retries = int(os.getenv("MAX_UPLOAD_RETRIES", "3"))
+    retried = 0
+
+    with get_session() as session:
+        failed_uploads = (
+            session.query(Upload)
+            .filter(
+                Upload.status == UploadStatus.FAILED.value,
+                Upload.retry_count < max_retries,
+            )
+            .all()
+        )
+
+        for upload in failed_uploads:
+            logger.info(f"Retrying upload {upload.id} (attempt {upload.retry_count + 1})")
+            upload.status = UploadStatus.PENDING.value
+            upload_video.delay(str(upload.video_id))
+            retried += 1
+
+        session.commit()
+
+    return {"status": "success", "retried": retried}
+
+
+@app.task(bind=True)
+def cleanup_old_files(self) -> dict[str, Any]:
+    """
+    Clean up old processed files (audio, video) after successful upload.
+
+    Respects retention period from environment.
+    """
+    import os
+    from datetime import datetime, timedelta
+    from pathlib import Path
+
+    logger.info("Cleaning up old files...")
+
+    retention_days = int(os.getenv("FILE_RETENTION_DAYS", "7"))
+    cutoff_date = datetime.utcnow() - timedelta(days=retention_days)
+
+    from shared.python.db import Upload, UploadStatus, get_session
+
+    deleted_files = 0
+    deleted_records = 0
+
+    with get_session() as session:
+        # Find successfully uploaded videos older than retention period
+        old_uploads = (
+            session.query(Upload)
+            .filter(
+                Upload.status == UploadStatus.SUCCESS.value,
+                Upload.uploaded_at < cutoff_date,
+            )
+            .all()
+        )
+
+        for upload in old_uploads:
+            video = upload.video
+            if video:
+                # Delete video file
+                if video.file_path:
+                    video_path = Path(video.file_path)
+                    if video_path.exists():
+                        video_path.unlink()
+                        deleted_files += 1
+                        logger.info(f"Deleted video file: {video.file_path}")
+
+                # Delete audio file
+                audio = video.audio
+                if audio and audio.file_path:
+                    audio_path = Path(audio.file_path)
+                    if audio_path.exists():
+                        audio_path.unlink()
+                        deleted_files += 1
+                        logger.info(f"Deleted audio file: {audio.file_path}")
+
+    logger.info(f"Cleanup complete: {deleted_files} files deleted")
+    return {"status": "success", "deleted_files": deleted_files, "deleted_records": deleted_records}
+
+
+@app.task(bind=True)
+def process_dead_letter_queue(self) -> dict[str, Any]:
+    """
+    Process tasks that have failed permanently and are in the dead letter queue.
+
+    Marks associated stories as failed and sends notifications.
+    """
+    import redis
+
+    logger.info("Processing dead letter queue...")
+
+    redis_host = os.getenv("REDIS_HOST", "localhost")
+    redis_port = int(os.getenv("REDIS_PORT", "6379"))
+
+    try:
+        r = redis.Redis(host=redis_host, port=redis_port, db=0)
+
+        # Check for failed tasks in Celery's default dead letter patterns
+        dead_letter_keys = r.keys("celery-task-meta-*")
+        processed = 0
+
+        for key in dead_letter_keys[:100]:  # Process up to 100 at a time
+            try:
+                task_data = r.get(key)
+                if task_data:
+                    import json
+
+                    data = json.loads(task_data)
+                    if data.get("status") == "FAILURE":
+                        task_id = data.get("task_id")
+                        error = data.get("result", "Unknown error")
+
+                        logger.warning(f"Dead letter task {task_id}: {error}")
+
+                        # Send notification about permanent failure
+                        send_failure_notification.delay(
+                            video_id=task_id or "unknown",
+                            failure_type="dead_letter",
+                            reason=str(error)[:500],
+                        )
+                        processed += 1
+
+                        # Remove processed dead letter
+                        r.delete(key)
+
+            except Exception as e:
+                logger.error(f"Error processing dead letter {key}: {e}")
+
+        return {"status": "success", "processed": processed}
+
+    except Exception as e:
+        logger.error(f"Dead letter queue processing failed: {e}")
+        return {"status": "error", "error": str(e)}
+
+
+@app.task(bind=True)
+def process_approved_stories(self) -> dict[str, Any]:
+    """
+    Find approved stories and start their pipeline processing.
+    """
+    logger.info("Processing approved stories...")
+
+    from shared.python.db import Story, StoryStatus, get_session
+
+    processed = 0
+    with get_session() as session:
+        approved_stories = (
+            session.query(Story)
+            .filter_by(status=StoryStatus.APPROVED.value)
+            .limit(5)
+            .all()
+        )
+
+        for story in approved_stories:
+            logger.info(f"Starting pipeline for story: {story.id}")
+            story.status = StoryStatus.PROCESSING.value
+            run_full_pipeline(str(story.id))
+            processed += 1
+
+        session.commit()
+
+    return {"status": "success", "processed": processed}
+
+
+# =============================================================================
+# Error Handling Tasks
+# =============================================================================
+
+
+@app.task(bind=True, max_retries=0)
+def handle_pipeline_failure(
+    self, story_id: str, stage: str, error_message: str
+) -> dict[str, Any]:
+    """
+    Handle pipeline failure by updating story status and notifying.
+
+    Args:
+        story_id: UUID of the failed story
+        stage: Pipeline stage where failure occurred
+        error_message: Error description
+
+    Returns:
+        Dict with handling status
+    """
+    logger.error(f"Pipeline failure for story {story_id} at {stage}: {error_message}")
+
+    from shared.python.db import Story, StoryStatus, get_session
+
+    with get_session() as session:
+        story = session.query(Story).filter_by(id=story_id).first()
+        if story:
+            story.status = StoryStatus.FAILED.value
+            story.error_message = f"[{stage}] {error_message}"[:1000]
+            session.commit()
+
+    # Send notification
+    send_failure_notification.delay(
+        video_id=story_id,
+        failure_type=f"pipeline_failure_{stage}",
+        reason=error_message,
+    )
+
+    return {"status": "handled", "story_id": story_id, "stage": stage}

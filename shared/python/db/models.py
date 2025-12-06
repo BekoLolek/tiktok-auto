@@ -78,6 +78,7 @@ class Story(Base):
     url = Column(Text)
     char_count = Column(Integer, nullable=False)
     status = Column(String(20), default=StoryStatus.PENDING.value)
+    error_message = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -186,6 +187,7 @@ class Batch(Base):
     status = Column(String(20), nullable=False)
     total_parts = Column(Integer, nullable=False)
     completed_parts = Column(Integer, default=0)
+    failed_parts = Column(Text)  # JSON array of failed part info
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships

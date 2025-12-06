@@ -3,6 +3,7 @@
 import os
 
 from celery import Celery
+from celery.schedules import crontab
 
 # Build Redis URL from environment
 redis_host = os.getenv("REDIS_HOST", "localhost")
@@ -45,20 +46,53 @@ app.conf.update(
         "celery_app.tasks.render_video": {"queue": "video"},
         "celery_app.tasks.upload_video": {"queue": "upload"},
         "celery_app.tasks.fetch_reddit": {"queue": "fetch"},
+        "celery_app.tasks.process_pending_uploads": {"queue": "upload"},
+        "celery_app.tasks.cleanup_old_files": {"queue": "maintenance"},
+        "celery_app.tasks.retry_failed_uploads": {"queue": "upload"},
+        "celery_app.tasks.process_dead_letter_queue": {"queue": "maintenance"},
     },
     # Task time limits
     task_soft_time_limit=300,  # 5 minutes soft limit
     task_time_limit=600,  # 10 minutes hard limit
+    # Dead letter queue settings
+    task_acks_on_failure_or_timeout=False,
 )
 
 # Beat schedule for periodic tasks
 app.conf.beat_schedule = {
-    # Example: fetch new stories every hour
-    # "fetch-reddit-stories": {
-    #     "task": "celery_app.tasks.fetch_reddit",
-    #     "schedule": 3600.0,  # Every hour
-    #     "args": (["scifi", "fantasy"],),
-    # },
+    # Fetch new stories from Reddit (configurable via env)
+    "fetch-reddit-stories": {
+        "task": "celery_app.tasks.scheduled_fetch_reddit",
+        "schedule": crontab(
+            minute=os.getenv("REDDIT_FETCH_MINUTE", "0"),
+            hour=os.getenv("REDDIT_FETCH_HOUR", "*/2"),  # Every 2 hours by default
+        ),
+        "args": (),
+    },
+    # Process pending uploads (check for ready videos)
+    "process-pending-uploads": {
+        "task": "celery_app.tasks.process_pending_uploads",
+        "schedule": crontab(minute="*/15"),  # Every 15 minutes
+        "args": (),
+    },
+    # Retry failed uploads
+    "retry-failed-uploads": {
+        "task": "celery_app.tasks.retry_failed_uploads",
+        "schedule": crontab(minute="30", hour="*/1"),  # Every hour at :30
+        "args": (),
+    },
+    # Cleanup old processed files
+    "cleanup-old-files": {
+        "task": "celery_app.tasks.cleanup_old_files",
+        "schedule": crontab(minute="0", hour="3"),  # Daily at 3 AM
+        "args": (),
+    },
+    # Process dead letter queue
+    "process-dead-letter-queue": {
+        "task": "celery_app.tasks.process_dead_letter_queue",
+        "schedule": crontab(minute="*/30"),  # Every 30 minutes
+        "args": (),
+    },
 }
 
 

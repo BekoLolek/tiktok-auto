@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS stories (
     url TEXT,
     char_count INTEGER NOT NULL,
     status VARCHAR(20) DEFAULT 'pending',
+    error_message TEXT,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -79,6 +80,7 @@ CREATE TABLE IF NOT EXISTS batches (
     status VARCHAR(20) NOT NULL,
     total_parts INTEGER NOT NULL,
     completed_parts INTEGER DEFAULT 0,
+    failed_parts TEXT,
     created_at TIMESTAMP DEFAULT NOW()
 );
 
