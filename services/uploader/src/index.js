@@ -47,6 +47,85 @@ app.get('/health', async (req, res) => {
   });
 });
 
+// Login page - shows status and instructions
+app.get('/login', async (req, res) => {
+  let uploader = null;
+  let isLoggedIn = false;
+  let error = null;
+
+  try {
+    uploader = new TikTokUploader(logger);
+    await uploader.init();
+    isLoggedIn = await uploader.isLoggedIn();
+    await uploader.close();
+  } catch (err) {
+    error = err.message;
+    if (uploader) {
+      await uploader.close().catch(() => {});
+    }
+  }
+
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>TikTok Login Status</title>
+      <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
+        .status { padding: 20px; border-radius: 8px; margin: 20px 0; }
+        .logged-in { background: #d4edda; border: 1px solid #c3e6cb; }
+        .logged-out { background: #f8d7da; border: 1px solid #f5c6cb; }
+        .error { background: #fff3cd; border: 1px solid #ffeaa7; }
+        h1 { color: #333; }
+        code { background: #f4f4f4; padding: 2px 6px; border-radius: 4px; }
+        pre { background: #f4f4f4; padding: 15px; border-radius: 8px; overflow-x: auto; }
+      </style>
+    </head>
+    <body>
+      <h1>TikTok Uploader - Login Status</h1>
+
+      ${error ? `<div class="status error"><strong>Error:</strong> ${error}</div>` : ''}
+
+      <div class="status ${isLoggedIn ? 'logged-in' : 'logged-out'}">
+        <strong>Status:</strong> ${isLoggedIn ? '✅ Logged in to TikTok' : '❌ Not logged in'}
+      </div>
+
+      ${!isLoggedIn ? `
+        <h2>How to Login</h2>
+        <p>TikTok requires manual login through a browser. Follow these steps:</p>
+
+        <h3>Option 1: Login locally (recommended)</h3>
+        <ol>
+          <li>Stop the Docker containers: <code>docker compose down</code></li>
+          <li>Run the uploader locally with visible browser:
+            <pre>cd services/uploader
+npm install
+HEADLESS=false node src/index.js</pre>
+          </li>
+          <li>The browser will open - navigate to tiktok.com and log in</li>
+          <li>Your session will be saved automatically</li>
+          <li>Stop the local server and restart Docker</li>
+        </ol>
+
+        <h3>Option 2: Copy session from your browser</h3>
+        <ol>
+          <li>Login to TikTok in your regular browser</li>
+          <li>Open DevTools (F12) → Application → Cookies</li>
+          <li>Copy all TikTok cookies</li>
+          <li>Place them in <code>data/session/cookies.json</code></li>
+        </ol>
+      ` : `
+        <p>✅ You're all set! The uploader can now post videos to TikTok.</p>
+        <p><a href="/login-status">Check status via API</a></p>
+      `}
+
+      <hr>
+      <p><a href="/">← Back</a> | <a href="/health">Health Check</a></p>
+    </body>
+    </html>
+  `);
+});
+
 // Upload endpoint
 app.post('/upload', async (req, res) => {
   const { videoId, videoPath, title, description, hashtags } = req.body;
