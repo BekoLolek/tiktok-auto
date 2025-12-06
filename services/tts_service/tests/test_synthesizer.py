@@ -83,10 +83,9 @@ class TestPiperClient:
     @patch("socket.socket")
     def test_health_check_failure(self, mock_socket_class):
         """Test health check when Piper is unavailable."""
-        import socket
 
         mock_socket = MagicMock()
-        mock_socket.connect.side_effect = socket.error("Connection refused")
+        mock_socket.connect.side_effect = OSError("Connection refused")
         mock_socket_class.return_value.__enter__ = MagicMock(return_value=mock_socket)
         mock_socket_class.return_value.__exit__ = MagicMock(return_value=False)
 

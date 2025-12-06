@@ -9,13 +9,11 @@ from typing import TYPE_CHECKING
 
 import praw
 from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 if TYPE_CHECKING:
     from praw.models import Submission
 
 from shared.python.db import Story, StoryStatus, get_session
-from shared.python.celery_app import celery_app
 
 from .config import Settings, get_settings
 

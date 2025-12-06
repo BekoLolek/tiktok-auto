@@ -235,7 +235,7 @@ class TestVideoRenderer:
         mock_clip.resize.return_value = mock_clip
         mock_clip.crop.return_value = mock_clip
 
-        result = renderer._resize_and_crop(mock_clip)
+        renderer._resize_and_crop(mock_clip)
 
         mock_clip.resize.assert_called_once()
         mock_clip.crop.assert_called_once()
@@ -248,7 +248,7 @@ class TestVideoRenderer:
         mock_clip.resize.return_value = mock_clip
         mock_clip.crop.return_value = mock_clip
 
-        result = renderer._resize_and_crop(mock_clip)
+        renderer._resize_and_crop(mock_clip)
 
         mock_clip.resize.assert_called_once()
         mock_clip.crop.assert_called_once()

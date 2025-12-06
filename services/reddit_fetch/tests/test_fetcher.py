@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from services.reddit_fetch.src.config import Settings
-from services.reddit_fetch.src.fetcher import RedditFetcher, FetchResult
+from services.reddit_fetch.src.fetcher import FetchResult, RedditFetcher
 
 
 class TestFetchResult:

@@ -43,10 +43,10 @@ class TestPipelineDataFlow:
     def test_story_to_script_relationship(self, db_session, story_factory, script_factory):
         """Test that scripts are properly linked to stories."""
         story = story_factory.create(db_session)
-        script1 = script_factory.create(
+        script_factory.create(
             db_session, story, part_number=1, total_parts=2, hook="Part 1 hook"
         )
-        script2 = script_factory.create(
+        script_factory.create(
             db_session, story, part_number=2, total_parts=2, hook="Part 2 hook"
         )
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import random
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,9 +15,8 @@ from moviepy.editor import (
     VideoFileClip,
     concatenate_videoclips,
 )
-from sqlalchemy import update
 
-from shared.python.db import Audio, Script, Story, StoryStatus, Video, get_session
+from shared.python.db import Audio, Script, Video, get_session
 
 from .config import Settings, get_settings
 

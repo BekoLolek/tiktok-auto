@@ -2,19 +2,15 @@
 
 from __future__ import annotations
 
-import asyncio
 import io
 import logging
 import socket
-import struct
 import wave
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from sqlalchemy import update
-
-from shared.python.db import Audio, Script, Story, StoryStatus, get_session
+from shared.python.db import Audio, Script, get_session
 
 from .config import Settings, get_settings
 
@@ -109,7 +105,7 @@ class PiperClient:
                 sock.settimeout(5.0)
                 sock.connect((self.host, self.port))
                 return True
-        except (socket.error, socket.timeout):
+        except (TimeoutError, OSError):
             return False
 
 
@@ -145,8 +141,7 @@ class TTSSynthesizer:
             if not script:
                 raise ValueError(f"Script {script_id} not found")
 
-            # Get story for context
-            story = session.get(Story, script.story_id)
+            # Story context available if needed via script.story_id
 
         # Select voice based on script setting
         voice = self._get_voice(script.voice_gender)

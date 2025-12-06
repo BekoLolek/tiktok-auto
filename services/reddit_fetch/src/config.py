@@ -1,6 +1,5 @@
 """Configuration for Reddit Fetch service."""
 
-import os
 
 from pydantic_settings import BaseSettings
 

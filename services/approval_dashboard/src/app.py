@@ -10,20 +10,17 @@ from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import desc, func, select, update
 
+from shared.python.celery_app import celery_app
 from shared.python.db import (
     Batch,
     BatchStatus,
     Story,
     StoryStatus,
-    Upload,
-    Video,
     get_session,
 )
-from shared.python.celery_app import celery_app
 
 from .config import get_settings
 from .logs import LogService
