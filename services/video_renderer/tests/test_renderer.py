@@ -10,8 +10,8 @@ sys.modules["moviepy"] = MagicMock()
 sys.modules["moviepy.editor"] = MagicMock()
 sys.modules["whisper"] = MagicMock()
 
-from services.video_renderer.src.config import Settings
-from services.video_renderer.src.renderer import (
+from services.video_renderer.src.config import Settings  # noqa: E402
+from services.video_renderer.src.renderer import (  # noqa: E402
     Caption,
     RenderResult,
     VideoRenderer,
