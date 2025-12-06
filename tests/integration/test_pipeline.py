@@ -1,6 +1,6 @@
 """Integration tests for pipeline communication between services."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
