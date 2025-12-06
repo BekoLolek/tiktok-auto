@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Downloads - TikTok Auto{% endblock %}
+{% block content %}
+<div class="card">
+    <h2>Manual Uploads Required ({{ total_count }})</h2>
+    <p style="color: #666; margin-bottom: 20px;">
+        These videos need to be manually uploaded to TikTok. Download the video, upload it to TikTok, then mark it as uploaded.
+    </p>
+
+    {% if video_uploads %}
+    <table>
+        <thead>
+            <tr>
+                <th>Video ID</th>
+                <th>Story Title</th>
+                <th>Part</th>
+                <th>Duration</th>
+                <th>Created</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in video_uploads %}
+            <tr>
+                <td>{{ item.video.id | string | truncate(8, True, '') }}</td>
+                <td>
+                    {% if item.story %}
+                    <a href="/stories/{{ item.story.id }}">{{ item.story.title | truncate(40) }}</a>
+                    {% else %}
+                    Unknown
+                    {% endif %}
+                </td>
+                <td>
+                    {% if item.script %}
+                    Part {{ item.script.part_number }}/{{ item.script.total_parts }}
+                    {% else %}
+                    -
+                    {% endif %}
+                </td>
+                <td>{{ item.video.duration_seconds | round(1) if item.video.duration_seconds else 'N/A' }}s</td>
+                <td>{{ item.video.created_at | datetime }}</td>
+                <td>
+                    <a href="/downloads/{{ item.video.id }}/file" class="btn btn-primary btn-sm" download>Download</a>
+                    <button type="button" class="btn btn-success btn-sm" onclick="showMarkUploadedModal('{{ item.video.id }}')">Mark Uploaded</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {% if total_pages > 1 %}
+    <div class="pagination">
+        {% if current_page > 1 %}
+        <a href="?status={{ current_status or '' }}&page={{ current_page - 1 }}">Prev</a>
+        {% endif %}
+
+        {% for p in range(1, total_pages + 1) %}
+            {% if p == current_page %}
+            <span class="active">{{ p }}</span>
+            {% elif p <= 3 or p > total_pages - 2 or (p >= current_page - 1 and p <= current_page + 1) %}
+            <a href="?status={{ current_status or '' }}&page={{ p }}">{{ p }}</a>
+            {% elif p == 4 or p == total_pages - 2 %}
+            <span>...</span>
+            {% endif %}
+        {% endfor %}
+
+        {% if current_page < total_pages %}
+        <a href="?status={{ current_status or '' }}&page={{ current_page + 1 }}">Next</a>
+        {% endif %}
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="alert alert-info">
+        No videos require manual upload at this time.
+    </div>
+    {% endif %}
+</div>
+
+<!-- Mark Uploaded Modal -->
+<div id="markUploadedModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
+    <div style="background: #fff; max-width: 400px; margin: 100px auto; padding: 20px; border-radius: 8px;">
+        <h3 style="margin-bottom: 15px;">Mark as Uploaded</h3>
+        <form id="markUploadedForm" method="post">
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px;">TikTok URL (optional):</label>
+                <input type="text" name="platform_url" placeholder="https://www.tiktok.com/@user/video/123" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+            </div>
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button type="button" class="btn btn-secondary" onclick="hideMarkUploadedModal()">Cancel</button>
+                <button type="submit" class="btn btn-success">Mark as Uploaded</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function showMarkUploadedModal(videoId) {
+    document.getElementById('markUploadedForm').action = '/downloads/' + videoId + '/mark-uploaded';
+    document.getElementById('markUploadedModal').style.display = 'block';
+}
+
+function hideMarkUploadedModal() {
+    document.getElementById('markUploadedModal').style.display = 'none';
+}
+
+// Close modal when clicking outside
+document.getElementById('markUploadedModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        hideMarkUploadedModal();
+    }
+});
+</script>
+{% endblock %}

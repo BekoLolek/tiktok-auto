@@ -9,16 +9,21 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, Form, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import desc, func, select, update
 
 from shared.python.celery_app import celery_app
 from shared.python.db import (
+    Audio,
     Batch,
     BatchStatus,
+    Script,
     Story,
     StoryStatus,
+    Upload,
+    UploadStatus,
+    Video,
     get_session,
 )
 
@@ -361,7 +366,144 @@ async def list_batches(
     )
 
 
+@app.get("/downloads", response_class=HTMLResponse)
+async def list_downloads(
+    request: Request,
+    status: str | None = Query(None),
+    page: int = Query(1, ge=1),
+):
+    """List videos available for manual download/upload."""
+    with get_session() as session:
+        # Get videos that need manual upload
+        query = (
+            select(Video)
+            .join(Upload, Video.id == Upload.video_id)
+            .where(Upload.status == UploadStatus.MANUAL_REQUIRED.value)
+        )
+
+        if status:
+            query = query.where(Upload.status == status)
+
+        # Get total count
+        count_query = (
+            select(func.count(Video.id))
+            .join(Upload, Video.id == Upload.video_id)
+            .where(Upload.status == UploadStatus.MANUAL_REQUIRED.value)
+        )
+        total_count = session.execute(count_query).scalar()
+
+        # Paginate
+        offset = (page - 1) * settings.stories_per_page
+        query = query.order_by(desc(Video.created_at)).offset(offset).limit(settings.stories_per_page)
+
+        videos = session.execute(query).scalars().all()
+        total_pages = (total_count + settings.stories_per_page - 1) // settings.stories_per_page
+
+        # Get upload info for each video
+        video_uploads = []
+        for video in videos:
+            upload = session.execute(
+                select(Upload).where(Upload.video_id == video.id)
+            ).scalar_one_or_none()
+
+            # Get story info through the chain
+            audio = session.get(Audio, video.audio_id)
+            script = session.get(Script, audio.script_id) if audio else None
+            story = session.get(Story, script.story_id) if script else None
+
+            video_uploads.append({
+                "video": video,
+                "upload": upload,
+                "story": story,
+                "script": script,
+            })
+
+    return templates.TemplateResponse(
+        "downloads.html",
+        {
+            "request": request,
+            "video_uploads": video_uploads,
+            "current_status": status,
+            "current_page": page,
+            "total_pages": total_pages,
+            "total_count": total_count,
+        },
+    )
+
+
+@app.get("/downloads/{video_id}/file")
+async def download_video_file(video_id: str):
+    """Download a video file for manual upload."""
+    with get_session() as session:
+        video = session.execute(
+            select(Video).where(Video.id == video_id)
+        ).scalar_one_or_none()
+
+        if not video:
+            raise HTTPException(status_code=404, detail="Video not found")
+
+        file_path = Path(video.file_path)
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail="Video file not found on disk")
+
+        return FileResponse(
+            path=str(file_path),
+            filename=file_path.name,
+            media_type="video/mp4",
+        )
+
+
+@app.post("/downloads/{video_id}/mark-uploaded")
+async def mark_video_uploaded(
+    video_id: str,
+    platform_url: str = Form(default=""),
+):
+    """Mark a video as manually uploaded."""
+    with get_session() as session:
+        upload = session.execute(
+            select(Upload).where(Upload.video_id == video_id)
+        ).scalar_one_or_none()
+
+        if not upload:
+            raise HTTPException(status_code=404, detail="Upload record not found")
+
+        session.execute(
+            update(Upload)
+            .where(Upload.video_id == video_id)
+            .values(
+                status=UploadStatus.SUCCESS.value,
+                platform_url=platform_url if platform_url else None,
+                uploaded_at=datetime.utcnow(),
+            )
+        )
+        session.commit()
+
+        logger.info(f"Video {video_id} marked as manually uploaded")
+
+    return RedirectResponse(url="/downloads", status_code=303)
+
+
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
-    return {"status": "healthy", "service": "approval-dashboard"}
+    """Health check endpoint with database connectivity."""
+    health_status = {
+        "status": "healthy",
+        "service": "approval-dashboard",
+        "checks": {},
+    }
+
+    # Check database connectivity
+    try:
+        with get_session() as session:
+            session.execute(select(func.count(Story.id)))
+        health_status["checks"]["database"] = "ok"
+    except Exception as e:
+        health_status["status"] = "unhealthy"
+        health_status["checks"]["database"] = f"error: {e!s}"
+
+    status_code = 200 if health_status["status"] == "healthy" else 503
+
+    if status_code != 200:
+        raise HTTPException(status_code=status_code, detail=health_status)
+
+    return health_status

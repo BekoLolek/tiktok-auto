@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS stories (
     char_count INTEGER NOT NULL,
     status VARCHAR(20) DEFAULT 'pending',
     error_message TEXT,
+    rejection_reason TEXT,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );

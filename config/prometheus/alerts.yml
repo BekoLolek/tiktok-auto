@@ -1,0 +1,185 @@
+groups:
+  - name: tiktok_auto_alerts
+    rules:
+      # Pipeline Health Alerts
+      - alert: HighFailureRate
+        expr: rate(tiktok_auto_stories_processed_total{status="failed"}[1h]) / rate(tiktok_auto_stories_processed_total[1h]) > 0.2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High story processing failure rate"
+          description: "More than 20% of stories are failing processing in the last hour"
+
+      - alert: UploadFailures
+        expr: increase(tiktok_auto_uploads_total{status="failed"}[1h]) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Multiple upload failures detected"
+          description: "{{ $value }} upload failures in the last hour"
+
+      - alert: NoStoriesFetched
+        expr: increase(tiktok_auto_stories_fetched_total[6h]) == 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No stories fetched from Reddit"
+          description: "No new stories have been fetched in the last 6 hours"
+
+      # Queue Alerts
+      - alert: PendingStoriesBacklog
+        expr: tiktok_auto_pending_stories > 50
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Large pending stories backlog"
+          description: "{{ $value }} stories are waiting for approval"
+
+      - alert: FailedUploadsBacklog
+        expr: tiktok_auto_failed_uploads > 10
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Failed uploads accumulating"
+          description: "{{ $value }} failed uploads need attention"
+
+      # Performance Alerts
+      - alert: SlowVideoRendering
+        expr: histogram_quantile(0.95, rate(tiktok_auto_video_rendering_duration_seconds_bucket[5m])) > 600
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Video rendering is slow"
+          description: "95th percentile video rendering time is {{ $value | humanizeDuration }}"
+
+      - alert: SlowAudioGeneration
+        expr: histogram_quantile(0.95, rate(tiktok_auto_audio_generation_duration_seconds_bucket[5m])) > 120
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Audio generation is slow"
+          description: "95th percentile audio generation time is {{ $value | humanizeDuration }}"
+
+      # Error Rate Alerts
+      - alert: HighErrorRate
+        expr: rate(tiktok_auto_errors_total[5m]) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate in {{ $labels.service }}"
+          description: "Service {{ $labels.service }} is experiencing {{ $value | humanize }} errors per second"
+
+      - alert: CriticalErrors
+        expr: increase(tiktok_auto_errors_total{error_type=~"critical|fatal"}[15m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical error in {{ $labels.service }}"
+          description: "{{ $labels.service }} has logged critical errors"
+
+      # Service Health Alerts
+      - alert: ServiceDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "{{ $labels.job }} has been unreachable for more than 2 minutes"
+
+      - alert: CeleryTasksStuck
+        expr: tiktok_auto_celery_tasks_active > 0 and changes(tiktok_auto_celery_tasks_total[30m]) == 0
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Celery tasks appear stuck"
+          description: "Active tasks detected but no task completions in 30 minutes"
+
+      # Rate Limiting Alerts
+      - alert: ApproachingDailyUploadLimit
+        expr: (tiktok_auto_uploads_total{status="success"} % 10) >= 8
+        for: 5m
+        labels:
+          severity: info
+        annotations:
+          summary: "Approaching daily TikTok upload limit"
+          description: "{{ $value }} of 10 daily uploads used"
+
+  - name: infrastructure_alerts
+    rules:
+      # Database Alerts
+      - alert: DatabaseConnectionFailure
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL database is down"
+          description: "Cannot connect to PostgreSQL database"
+
+      - alert: DatabaseHighConnections
+        expr: pg_stat_activity_count > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High database connection count"
+          description: "{{ $value }} active database connections"
+
+      # Redis Alerts
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis is down"
+          description: "Cannot connect to Redis"
+
+      - alert: RedisHighMemory
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis memory usage high"
+          description: "Redis is using {{ $value | humanizePercentage }} of available memory"
+
+      # Elasticsearch Alerts
+      - alert: ElasticsearchDown
+        expr: elasticsearch_cluster_health_status{color="red"} == 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Elasticsearch cluster is red"
+          description: "Elasticsearch cluster health is red - data may be unavailable"
+
+      # Disk Space Alerts
+      - alert: LowDiskSpace
+        expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes) < 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low disk space on {{ $labels.mountpoint }}"
+          description: "Only {{ $value | humanizePercentage }} disk space remaining"
+
+      - alert: CriticalDiskSpace
+        expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes) < 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical disk space on {{ $labels.mountpoint }}"
+          description: "Only {{ $value | humanizePercentage }} disk space remaining"

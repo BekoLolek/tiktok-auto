@@ -11,7 +11,8 @@ alerting:
   alertmanagers: []
 
 # Rule files
-rule_files: []
+rule_files:
+  - /etc/prometheus/alerts.yml
 
 # Scrape configurations
 scrape_configs:

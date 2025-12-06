@@ -79,6 +79,7 @@ class Story(Base):
     char_count = Column(Integer, nullable=False)
     status = Column(String(20), default=StoryStatus.PENDING.value)
     error_message = Column(Text)
+    rejection_reason = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
