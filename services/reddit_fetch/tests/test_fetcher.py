@@ -180,8 +180,10 @@ class TestRedditFetcher:
     def test_is_duplicate_returns_true(self, mock_get_session, fetcher):
         """Test duplicate detection returns True for existing story."""
         mock_session = MagicMock()
-        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
-        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+        mock_context = MagicMock()
+        mock_context.__enter__ = MagicMock(return_value=mock_session)
+        mock_context.__exit__ = MagicMock(return_value=False)
+        mock_get_session.return_value = mock_context
 
         # Mock existing story
         mock_session.execute.return_value.scalar_one_or_none.return_value = MagicMock()
@@ -192,20 +194,25 @@ class TestRedditFetcher:
     def test_is_duplicate_returns_false(self, mock_get_session, fetcher):
         """Test duplicate detection returns False for new story."""
         mock_session = MagicMock()
-        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
-        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+        mock_context = MagicMock()
+        mock_context.__enter__ = MagicMock(return_value=mock_session)
+        mock_context.__exit__ = MagicMock(return_value=False)
+        mock_get_session.return_value = mock_context
 
         # Mock no existing story
         mock_session.execute.return_value.scalar_one_or_none.return_value = None
 
         assert fetcher._is_duplicate("new_id") is False
 
+    @patch("services.reddit_fetch.src.fetcher.Story")
     @patch("services.reddit_fetch.src.fetcher.get_session")
-    def test_store_story_creates_record(self, mock_get_session, fetcher):
+    def test_store_story_creates_record(self, mock_get_session, mock_story_class, fetcher):
         """Test that store_story creates a database record."""
         mock_session = MagicMock()
-        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
-        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+        mock_context = MagicMock()
+        mock_context.__enter__ = MagicMock(return_value=mock_session)
+        mock_context.__exit__ = MagicMock(return_value=False)
+        mock_get_session.return_value = mock_context
 
         submission = MagicMock()
         submission.id = "test123"

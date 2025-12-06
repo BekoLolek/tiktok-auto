@@ -205,8 +205,10 @@ class TestTextProcessor:
     ):
         """Test processing a single-part story."""
         mock_session = MagicMock()
-        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
-        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+        mock_context = MagicMock()
+        mock_context.__enter__ = MagicMock(return_value=mock_session)
+        mock_context.__exit__ = MagicMock(return_value=False)
+        mock_get_session.return_value = mock_context
 
         mock_story = MagicMock()
         mock_story.char_count = 3000  # Below min_chars_for_split
@@ -234,8 +236,10 @@ class TestTextProcessor:
     ):
         """Test processing a multi-part story."""
         mock_session = MagicMock()
-        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
-        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+        mock_context = MagicMock()
+        mock_context.__enter__ = MagicMock(return_value=mock_session)
+        mock_context.__exit__ = MagicMock(return_value=False)
+        mock_get_session.return_value = mock_context
 
         mock_story = MagicMock()
         mock_story.char_count = 8000  # Above min_chars_for_split
@@ -271,8 +275,10 @@ class TestTextProcessor:
     def test_process_story_not_found(self, mock_get_session, processor):
         """Test processing non-existent story."""
         mock_session = MagicMock()
-        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
-        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+        mock_context = MagicMock()
+        mock_context.__enter__ = MagicMock(return_value=mock_session)
+        mock_context.__exit__ = MagicMock(return_value=False)
+        mock_get_session.return_value = mock_context
         mock_session.get.return_value = None
 
         with pytest.raises(ValueError, match="Story 999 not found"):

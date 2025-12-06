@@ -204,20 +204,24 @@ class TestTTSSynthesizer:
     def test_synthesize_script_not_found(self, mock_get_session, synthesizer):
         """Test synthesizing non-existent script."""
         mock_session = MagicMock()
-        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
-        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+        mock_context = MagicMock()
+        mock_context.__enter__ = MagicMock(return_value=mock_session)
+        mock_context.__exit__ = MagicMock(return_value=False)
+        mock_get_session.return_value = mock_context
         mock_session.get.return_value = None
 
         with pytest.raises(ValueError, match="Script 999 not found"):
             synthesizer.synthesize_script(999)
 
+    @patch("services.tts_service.src.synthesizer.Audio")
     @patch("services.tts_service.src.synthesizer.get_session")
-    @patch.object(TTSSynthesizer, "client", new_callable=lambda: property(lambda self: MagicMock()))
-    def test_synthesize_script_success(self, mock_client_prop, mock_get_session, synthesizer, tmp_path):
+    def test_synthesize_script_success(self, mock_get_session, mock_audio, synthesizer, tmp_path):
         """Test successful script synthesis."""
         mock_session = MagicMock()
-        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
-        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+        mock_context = MagicMock()
+        mock_context.__enter__ = MagicMock(return_value=mock_session)
+        mock_context.__exit__ = MagicMock(return_value=False)
+        mock_get_session.return_value = mock_context
 
         mock_script = MagicMock()
         mock_script.voice_gender = "male"
@@ -225,15 +229,7 @@ class TestTTSSynthesizer:
         mock_script.content = "Content"
         mock_script.cta = "CTA"
         mock_script.story_id = 1
-
-        mock_story = MagicMock()
-
-        def get_side_effect(model, id):
-            if hasattr(model, "__name__") and model.__name__ == "Script":
-                return mock_script
-            return mock_story
-
-        mock_session.get.side_effect = [mock_script, mock_story]
+        mock_session.get.return_value = mock_script
 
         # Create valid WAV response
         buffer = io.BytesIO()
