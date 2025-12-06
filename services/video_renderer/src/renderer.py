@@ -8,13 +8,26 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from moviepy.editor import (
-    AudioFileClip,
-    CompositeVideoClip,
-    TextClip,
-    VideoFileClip,
-    concatenate_videoclips,
-)
+try:
+    # MoviePy 2.x imports
+    from moviepy import (
+        AudioFileClip,
+        CompositeVideoClip,
+        TextClip,
+        VideoFileClip,
+        concatenate_videoclips,
+        ColorClip,
+    )
+except ImportError:
+    # MoviePy 1.x fallback
+    from moviepy.editor import (
+        AudioFileClip,
+        CompositeVideoClip,
+        TextClip,
+        VideoFileClip,
+        concatenate_videoclips,
+        ColorClip,
+    )
 
 from shared.python.db import Audio, Script, Video, get_session
 
@@ -39,11 +52,11 @@ class Caption:
 class RenderResult:
     """Result of video rendering."""
 
-    script_id: int
+    audio_id: str
+    video_id: str
     video_path: str
     duration_seconds: float
-    width: int
-    height: int
+    resolution: str
 
 
 class WhisperTranscriber:
@@ -138,42 +151,42 @@ class VideoRenderer:
             self._transcriber = WhisperTranscriber(self.settings.whisper_model)
         return self._transcriber
 
-    def render_video(self, script_id: int) -> RenderResult:
-        """Render video for a script.
+    def render(self, audio_id: str) -> str:
+        """Render video for an audio record.
 
         Args:
-            script_id: ID of script to render
+            audio_id: UUID of audio to render video for
 
         Returns:
-            RenderResult with path to rendered video
+            Video ID (UUID as string)
         """
         with get_session() as session:
-            script = session.get(Script, script_id)
-            if not script:
-                raise ValueError(f"Script {script_id} not found")
-
-            # Get audio record
-            audio = (
-                session.query(Audio).filter(Audio.script_id == script_id).first()
-            )
+            audio = session.get(Audio, audio_id)
             if not audio:
-                raise ValueError(f"No audio found for script {script_id}")
+                raise ValueError(f"Audio {audio_id} not found")
+
+            # Extract data while in session
+            audio_data = {
+                "id": str(audio.id),
+                "file_path": audio.file_path,
+                "duration_seconds": audio.duration_seconds,
+            }
 
         logger.info(
-            f"Rendering video for script {script_id}",
-            extra={"script_id": script_id, "audio_duration": audio.duration},
+            f"Rendering video for audio {audio_id}",
+            extra={"audio_id": audio_id, "audio_duration": audio_data["duration_seconds"]},
         )
 
         try:
             # Load audio
-            audio_clip = AudioFileClip(audio.file_path)
+            audio_clip = AudioFileClip(audio_data["file_path"])
             duration = audio_clip.duration
 
             # Get background video
             background = self._get_background_video(duration)
 
             # Generate captions
-            captions = self.transcriber.transcribe(audio.file_path)
+            captions = self.transcriber.transcribe(audio_data["file_path"])
 
             # Create caption clips
             caption_clips = self._create_caption_clips(captions, duration)
@@ -183,36 +196,36 @@ class VideoRenderer:
                 [background] + caption_clips,
                 size=(self.settings.video_width, self.settings.video_height),
             )
-            final_clip = final_clip.set_audio(audio_clip)
+            # MoviePy 2.x uses with_audio instead of set_audio
+            try:
+                final_clip = final_clip.with_audio(audio_clip)
+            except AttributeError:
+                final_clip = final_clip.set_audio(audio_clip)
 
             # Render to file
-            output_path = self._render_to_file(script_id, final_clip)
+            output_path = self._render_to_file(audio_id, final_clip)
 
             # Clean up
             audio_clip.close()
             background.close()
             final_clip.close()
 
-            result = RenderResult(
-                script_id=script_id,
-                video_path=str(output_path),
-                duration_seconds=duration,
-                width=self.settings.video_width,
-                height=self.settings.video_height,
+            # Save to database and get video ID
+            video_id = self._save_video_record(
+                audio_id=audio_id,
+                file_path=str(output_path),
+                duration=duration,
             )
-
-            # Save to database
-            self._save_video_record(result)
 
             logger.info(
-                f"Rendered video for script {script_id}",
-                extra={"script_id": script_id, "path": str(output_path)},
+                f"Rendered video for audio {audio_id}",
+                extra={"audio_id": audio_id, "video_id": video_id, "path": str(output_path)},
             )
 
-            return result
+            return video_id
 
         except Exception as e:
-            logger.error(f"Render failed for script {script_id}: {e}")
+            logger.error(f"Render failed for audio {audio_id}: {e}")
             raise
 
     def _get_background_video(self, duration: float) -> VideoFileClip:
@@ -247,15 +260,16 @@ class VideoRenderer:
             loops_needed = int(duration / bg_clip.duration) + 1
             bg_clip = concatenate_videoclips([bg_clip] * loops_needed)
 
-        # Trim to exact duration
-        bg_clip = bg_clip.subclip(0, duration)
+        # Trim to exact duration (MoviePy 2.x uses subclipped)
+        try:
+            bg_clip = bg_clip.subclipped(0, duration)
+        except AttributeError:
+            bg_clip = bg_clip.subclip(0, duration)
 
         return bg_clip
 
     def _create_solid_background(self, duration: float) -> VideoFileClip:
         """Create a solid color background clip."""
-        from moviepy.editor import ColorClip
-
         return ColorClip(
             size=(self.settings.video_width, self.settings.video_height),
             color=(20, 20, 30),  # Dark blue-gray
@@ -270,14 +284,27 @@ class VideoRenderer:
 
         clip_aspect = clip.h / clip.w
 
+        # MoviePy 2.x uses resized/cropped, 1.x uses resize/crop
+        def do_resize(c, **kwargs):
+            try:
+                return c.resized(**kwargs)
+            except AttributeError:
+                return c.resize(**kwargs)
+
+        def do_crop(c, **kwargs):
+            try:
+                return c.cropped(**kwargs)
+            except AttributeError:
+                return c.crop(**kwargs)
+
         if clip_aspect < target_aspect:
             # Video is wider - fit to height, crop width
             new_h = target_h
             new_w = int(clip.w * (target_h / clip.h))
-            clip = clip.resize(height=new_h)
+            clip = do_resize(clip, height=new_h)
             # Crop to center
             x_center = new_w // 2
-            clip = clip.crop(
+            clip = do_crop(clip,
                 x1=x_center - target_w // 2,
                 x2=x_center + target_w // 2,
             )
@@ -285,10 +312,10 @@ class VideoRenderer:
             # Video is taller - fit to width, crop height
             new_w = target_w
             new_h = int(clip.h * (target_w / clip.w))
-            clip = clip.resize(width=new_w)
+            clip = do_resize(clip, width=new_w)
             # Crop to center
             y_center = new_h // 2
-            clip = clip.crop(
+            clip = do_crop(clip,
                 y1=y_center - target_h // 2,
                 y2=y_center + target_h // 2,
             )
@@ -311,25 +338,42 @@ class VideoRenderer:
 
         for caption in captions:
             try:
-                txt_clip = TextClip(
-                    caption.text,
-                    fontsize=self.settings.caption_font_size,
-                    color=self.settings.caption_color,
-                    font=self.settings.caption_font,
-                    stroke_color=self.settings.caption_stroke_color,
-                    stroke_width=self.settings.caption_stroke_width,
-                    method="caption",
-                    size=(self.settings.video_width - 100, None),
-                )
-
-                # Position caption
-                txt_clip = txt_clip.set_position(
-                    ("center", self.settings.video_height - self.settings.caption_margin_bottom)
-                )
-
-                # Set timing
-                txt_clip = txt_clip.set_start(caption.start_time)
-                txt_clip = txt_clip.set_duration(caption.end_time - caption.start_time)
+                # MoviePy 2.x has different API than 1.x
+                try:
+                    # MoviePy 2.x API
+                    txt_clip = TextClip(
+                        text=caption.text,
+                        font_size=self.settings.caption_font_size,
+                        color=self.settings.caption_color,
+                        font=self.settings.caption_font,
+                        stroke_color=self.settings.caption_stroke_color,
+                        stroke_width=self.settings.caption_stroke_width,
+                        method="caption",
+                        size=(self.settings.video_width - 100, None),
+                    )
+                    # MoviePy 2.x uses with_* methods
+                    txt_clip = txt_clip.with_position(
+                        ("center", self.settings.video_height - self.settings.caption_margin_bottom)
+                    )
+                    txt_clip = txt_clip.with_start(caption.start_time)
+                    txt_clip = txt_clip.with_duration(caption.end_time - caption.start_time)
+                except TypeError:
+                    # MoviePy 1.x fallback
+                    txt_clip = TextClip(
+                        caption.text,
+                        fontsize=self.settings.caption_font_size,
+                        color=self.settings.caption_color,
+                        font=self.settings.caption_font,
+                        stroke_color=self.settings.caption_stroke_color,
+                        stroke_width=self.settings.caption_stroke_width,
+                        method="caption",
+                        size=(self.settings.video_width - 100, None),
+                    )
+                    txt_clip = txt_clip.set_position(
+                        ("center", self.settings.video_height - self.settings.caption_margin_bottom)
+                    )
+                    txt_clip = txt_clip.set_start(caption.start_time)
+                    txt_clip = txt_clip.set_duration(caption.end_time - caption.start_time)
 
                 clips.append(txt_clip)
 
@@ -339,17 +383,17 @@ class VideoRenderer:
 
         return clips
 
-    def _render_to_file(self, script_id: int, clip: CompositeVideoClip) -> Path:
+    def _render_to_file(self, audio_id: str, clip: CompositeVideoClip) -> Path:
         """Render video clip to file.
 
         Args:
-            script_id: Script ID for filename
+            audio_id: Audio ID for filename
             clip: Composed video clip
 
         Returns:
             Path to rendered video file
         """
-        output_path = self.settings.output_path / f"video_{script_id}.mp4"
+        output_path = self.settings.output_path / f"video_{audio_id}.mp4"
 
         clip.write_videofile(
             str(output_path),
@@ -358,28 +402,39 @@ class VideoRenderer:
             audio_codec=self.settings.audio_codec,
             bitrate=self.settings.video_bitrate,
             audio_bitrate=self.settings.audio_bitrate,
-            temp_audiofile=str(self.settings.temp_path / f"temp_audio_{script_id}.m4a"),
+            temp_audiofile=str(self.settings.temp_path / f"temp_audio_{audio_id}.m4a"),
             remove_temp=True,
             logger=None,  # Suppress moviepy logging
         )
 
         return output_path
 
-    def _save_video_record(self, result: RenderResult) -> None:
-        """Save video record to database."""
+    def _save_video_record(
+        self, audio_id: str, file_path: str, duration: float
+    ) -> str:
+        """Save video record to database and return video ID."""
+        resolution = f"{self.settings.video_width}x{self.settings.video_height}"
+
         with get_session() as session:
             video = Video(
-                script_id=result.script_id,
-                file_path=result.video_path,
-                duration=result.duration_seconds,
-                width=result.width,
-                height=result.height,
+                audio_id=audio_id,
+                file_path=file_path,
+                duration_seconds=duration,
+                resolution=resolution,
+                has_captions=True,
             )
             session.add(video)
+            session.flush()
+            video_id = str(video.id)
             session.commit()
+            return video_id
 
 
-def render_video(script_id: int) -> RenderResult:
-    """Render video - convenience function."""
+def render(audio_id: str) -> str:
+    """Render video - convenience function.
+
+    Returns:
+        Video ID (UUID as string)
+    """
     renderer = VideoRenderer()
-    return renderer.render_video(script_id)
+    return renderer.render(audio_id)

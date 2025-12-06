@@ -94,8 +94,12 @@ Guidelines:
             )
         return self._ollama
 
-    def process_story(self, story_id: int) -> list[ProcessedScript]:
-        """Process a story into scripts."""
+    def process_story(self, story_id: str) -> list[str]:
+        """Process a story into scripts.
+
+        Returns:
+            List of script IDs (UUIDs as strings)
+        """
         with get_session() as session:
             story = session.get(Story, story_id)
             if not story:
@@ -109,22 +113,43 @@ Guidelines:
             )
             session.commit()
 
-        try:
-            # Determine if we need to split
-            if story.char_count < self.settings.min_chars_for_split:
-                scripts = [self._process_single_part(story)]
-            else:
-                scripts = self._process_multi_part(story)
+            # Extract story data while in session to avoid DetachedInstanceError
+            story_data = {
+                "id": story.id,
+                "title": story.title,
+                "content": story.content,
+                "subreddit": story.subreddit,
+                "char_count": story.char_count,
+            }
 
-            # Save scripts to database
-            self._save_scripts(story_id, scripts)
+        try:
+            # Estimate duration based on word count
+            word_count = len(story_data["content"].split())
+            estimated_duration = (word_count / self.settings.words_per_minute) * 60
+
+            logger.info(
+                f"Story {story_id}: {word_count} words, estimated {estimated_duration:.0f}s",
+                extra={"story_id": story_id, "word_count": word_count, "estimated_duration": estimated_duration},
+            )
+
+            # Determine number of parts needed (each part max 3 minutes)
+            max_duration = self.settings.max_duration_per_part_seconds
+            num_parts_needed = max(1, int(estimated_duration / max_duration) + (1 if estimated_duration % max_duration > 30 else 0))
+
+            if num_parts_needed == 1:
+                scripts = [self._process_single_part(story_data)]
+            else:
+                scripts = self._process_multi_part(story_data, num_parts_needed)
+
+            # Save scripts to database and get their IDs
+            script_ids = self._save_scripts(story_id, scripts)
 
             logger.info(
                 f"Processed story {story_id} into {len(scripts)} part(s)",
                 extra={"story_id": story_id, "parts": len(scripts)},
             )
 
-            return scripts
+            return script_ids
 
         except Exception as e:
             # Update status to failed
@@ -137,15 +162,15 @@ Guidelines:
                 session.commit()
             raise
 
-    def _process_single_part(self, story: Story) -> ProcessedScript:
+    def _process_single_part(self, story: dict) -> ProcessedScript:
         """Process a single-part story."""
         prompt = f"""Enhance this Reddit story for TikTok narration.
 
-Title: {story.title}
-Subreddit: r/{story.subreddit}
+Title: {story["title"]}
+Subreddit: r/{story["subreddit"]}
 
 Story:
-{story.content}
+{story["content"]}
 
 Respond in JSON format:
 {{
@@ -175,15 +200,22 @@ Respond in JSON format:
             estimated_duration_seconds=duration,
         )
 
-    def _process_multi_part(self, story: Story) -> list[ProcessedScript]:
-        """Process a multi-part story with cliffhangers."""
-        # First, determine split points
-        split_points = self._find_split_points(story.content)
+    def _process_multi_part(self, story: dict, target_parts: int) -> list[ProcessedScript]:
+        """Process a multi-part story with cliffhangers.
+
+        Args:
+            story: Story data dict
+            target_parts: Target number of parts based on duration estimate
+        """
+        # Find split points aiming for target_parts
+        split_points = self._find_split_points(story["content"], target_parts)
 
         # Generate scripts for each part
         scripts = []
-        parts = self._split_content(story.content, split_points)
+        parts = self._split_content(story["content"], split_points)
         total_parts = len(parts)
+
+        logger.info(f"Splitting story into {total_parts} parts (target was {target_parts})")
 
         # Select one voice for the entire story
         import random
@@ -224,7 +256,7 @@ Respond in JSON format:
 
     def _build_multi_part_prompt(
         self,
-        story: Story,
+        story: dict,
         part_content: str,
         part_number: int,
         total_parts: int,
@@ -232,60 +264,94 @@ Respond in JSON format:
         is_last: bool,
     ) -> str:
         """Build prompt for multi-part processing."""
-        context = f"Part {part_number} of {total_parts}"
-
-        if is_first:
-            instructions = "Create an attention-grabbing hook. End with a cliffhanger to make viewers want part 2."
-        elif is_last:
-            instructions = "Reference this being the final part. Create a satisfying conclusion with a strong CTA."
+        # Determine the CTA based on position
+        if is_last:
+            cta_instruction = "Like and follow for more stories!"
         else:
-            instructions = f"Reference this being part {part_number}. End with a cliffhanger for the next part."
+            next_part = part_number + 1
+            cta_instruction = f"Follow for part {next_part}!"
+
+        # Determine hook based on position
+        if is_first:
+            hook_instruction = "An attention-grabbing opening line"
+        else:
+            hook_instruction = f"Part {part_number}"
 
         return f"""Enhance this Reddit story segment for TikTok narration.
 
-Title: {story.title}
-{context}
-Subreddit: r/{story.subreddit}
+Title: {story["title"]}
+Subreddit: r/{story["subreddit"]}
 
-Instructions: {instructions}
+Instructions: Keep the story natural. Don't add commentary about parts or references to this being a multi-part story in the content itself.
 
 Story segment:
 {part_content}
 
 Respond in JSON format:
 {{
-    "hook": "{'Opening hook for part 1' if is_first else f'Transition hook referencing part {part_number}'}",
-    "content": "The enhanced story text for narration",
-    "cta": "{'Follow for part 2!' if not is_last else 'Like and follow for more stories!'}"
+    "hook": "{hook_instruction}",
+    "content": "The enhanced story text for narration (keep it natural, no part references)",
+    "cta": "{cta_instruction}"
 }}"""
 
-    def _find_split_points(self, content: str) -> list[int]:
-        """Find natural split points in content (paragraph breaks, cliffhangers)."""
+    def _find_split_points(self, content: str, target_parts: int) -> list[int]:
+        """Find natural split points in content (paragraph breaks, cliffhangers).
+
+        Args:
+            content: Full story content
+            target_parts: Number of parts to split into
+
+        Returns:
+            List of paragraph indices where splits should occur
+        """
         # Split on paragraph breaks
         paragraphs = content.split("\n\n")
 
-        # Calculate target length per part
-        total_chars = len(content)
-        num_parts = max(1, total_chars // self.settings.max_chars_per_part + 1)
-        target_chars_per_part = total_chars // num_parts
+        if target_parts <= 1 or len(paragraphs) < 2:
+            return []
+
+        # We need (target_parts - 1) split points
+        splits_needed = target_parts - 1
+
+        # Calculate target word count per part
+        total_words = len(content.split())
+        target_words_per_part = total_words // target_parts
 
         split_points = []
-        current_length = 0
+        current_words = 0
+        splits_made = 0
 
         for i, para in enumerate(paragraphs[:-1]):  # Don't add split after last paragraph
-            current_length += len(para) + 2  # +2 for \n\n
+            para_words = len(para.split())
+            current_words += para_words
 
-            if current_length >= target_chars_per_part:
-                # Look for cliffhanger indicators
+            # Check if we've reached the target for this part
+            if current_words >= target_words_per_part and splits_made < splits_needed:
+                # Prefer cliffhanger points, but accept any paragraph break near target
                 if self._is_good_split_point(para):
                     split_points.append(i)
-                    current_length = 0
-                elif current_length >= target_chars_per_part * 1.3:
-                    # Force split if too long
+                    current_words = 0
+                    splits_made += 1
+                    logger.debug(f"Split at paragraph {i} (cliffhanger): '{para[-50:]}...'")
+                elif current_words >= target_words_per_part * 1.2:
+                    # Force split if 20% over target
                     split_points.append(i)
-                    current_length = 0
+                    current_words = 0
+                    splits_made += 1
+                    logger.debug(f"Split at paragraph {i} (forced): {current_words} words")
 
-        return split_points
+        # If we didn't find enough natural split points, distribute evenly
+        if len(split_points) < splits_needed:
+            logger.warning(f"Only found {len(split_points)} natural splits, need {splits_needed}. Distributing evenly.")
+            # Fall back to even distribution
+            split_points = []
+            paras_per_part = len(paragraphs) // target_parts
+            for i in range(1, target_parts):
+                split_idx = min(i * paras_per_part - 1, len(paragraphs) - 2)
+                if split_idx not in split_points:
+                    split_points.append(split_idx)
+
+        return sorted(split_points)
 
     def _is_good_split_point(self, paragraph: str) -> bool:
         """Check if paragraph ends with a good cliffhanger."""
@@ -348,8 +414,9 @@ Respond in JSON format:
             "cta": cta_match.group(1) if cta_match else "Follow for more stories!",
         }
 
-    def _save_scripts(self, story_id: int, scripts: list[ProcessedScript]) -> None:
-        """Save processed scripts to database."""
+    def _save_scripts(self, story_id: str, scripts: list[ProcessedScript]) -> list[str]:
+        """Save processed scripts to database and return their IDs."""
+        script_ids = []
         with get_session() as session:
             for script in scripts:
                 db_script = Script(
@@ -360,13 +427,16 @@ Respond in JSON format:
                     hook=script.hook,
                     cta=script.cta,
                     voice_gender=script.voice_gender,
-                    estimated_duration=script.estimated_duration_seconds,
+                    char_count=len(script.content),
                 )
                 session.add(db_script)
+                session.flush()  # Get the ID
+                script_ids.append(str(db_script.id))
             session.commit()
+        return script_ids
 
 
-def process_story(story_id: int) -> list[ProcessedScript]:
+def process_story(story_id: str) -> list[ProcessedScript]:
     """Process a story - convenience function."""
     processor = TextProcessor()
     return processor.process_story(story_id)

@@ -23,10 +23,8 @@ class Settings(BaseSettings):
     ollama_model: str = "llama3.1:8b"
 
     # Processing settings
-    max_chars_per_part: int = 5000  # ~3 min at 150 wpm
-    min_chars_for_split: int = 5000  # Don't split below this
-    target_video_duration_seconds: int = 180  # 3 minutes
-    words_per_minute: int = 150
+    max_duration_per_part_seconds: int = 180  # 3 minutes max per part
+    words_per_minute: int = 150  # Average speaking rate for duration estimation
 
     # Retry settings
     max_retries: int = 3

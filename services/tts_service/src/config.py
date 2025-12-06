@@ -19,18 +19,22 @@ class Settings(BaseSettings):
     redis_host: str = "localhost"
     redis_port: int = 6379
 
-    # Piper TTS
-    piper_host: str = "localhost"
-    piper_port: int = 10200
+    # Edge TTS Voice settings (Microsoft Neural Voices)
+    # Popular natural voices:
+    # Male: en-US-ChristopherNeural, en-US-GuyNeural, en-US-DavisNeural
+    # Female: en-US-JennyNeural, en-US-AriaNeural, en-US-SaraNeural
+    male_voice: str = "en-US-GuyNeural"
+    female_voice: str = "en-US-JennyNeural"
 
-    # Voice settings
-    male_voice: str = "en_US-lessac-medium"
-    female_voice: str = "en_US-amy-medium"
+    # Voice rate adjustment (-50% to +100%, e.g., "+10%" for slightly faster)
+    voice_rate: str = "+0%"
+    # Voice pitch adjustment (-50Hz to +50Hz, e.g., "+5Hz")
+    voice_pitch: str = "+0Hz"
 
     # Output settings
     audio_output_dir: str = "/data/audio"
-    audio_format: str = "wav"
-    sample_rate: int = 22050
+    audio_format: str = "mp3"  # Edge TTS outputs mp3 natively
+    sample_rate: int = 24000  # Edge TTS default
 
     @property
     def database_url(self) -> str:

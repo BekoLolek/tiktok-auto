@@ -25,8 +25,10 @@ RUN pip install --no-cache-dir \
 COPY services/text_processor/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy service code
-COPY services/text_processor/src ./src
+# Copy service code with full path structure for imports
+COPY services/__init__.py ./services/__init__.py
+COPY services/text_processor/__init__.py ./services/text_processor/__init__.py
+COPY services/text_processor/src ./services/text_processor/src
 
 # Set Python path
 ENV PYTHONPATH=/app

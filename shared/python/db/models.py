@@ -28,12 +28,21 @@ class Base(DeclarativeBase):
 class StoryStatus(str, Enum):
     """Status values for stories."""
 
-    PENDING = "pending"
-    APPROVED = "approved"
-    REJECTED = "rejected"
-    PROCESSING = "processing"
-    COMPLETED = "completed"
-    FAILED = "failed"
+    # Initial states
+    PENDING = "pending"  # Awaiting review
+    APPROVED = "approved"  # Ready to process
+    REJECTED = "rejected"  # Won't be processed
+
+    # Processing states (detailed)
+    PROCESSING = "processing"  # Generic processing (legacy)
+    SCRIPTING = "scripting"  # Generating scripts with LLM
+    GENERATING_AUDIO = "generating_audio"  # TTS synthesis
+    RENDERING_VIDEO = "rendering_video"  # MoviePy rendering
+    UPLOADING = "uploading"  # Uploading to TikTok
+
+    # Final states
+    COMPLETED = "completed"  # All done
+    FAILED = "failed"  # Error occurred
 
 
 class UploadStatus(str, Enum):
@@ -78,6 +87,7 @@ class Story(Base):
     url = Column(Text)
     char_count = Column(Integer, nullable=False)
     status = Column(String(20), default=StoryStatus.PENDING.value)
+    progress_info = Column(Text)  # e.g. "Part 2/3: generating audio"
     error_message = Column(Text)
     rejection_reason = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)

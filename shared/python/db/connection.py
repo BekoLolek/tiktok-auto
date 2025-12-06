@@ -79,3 +79,25 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
+
+
+def update_story_progress(
+    story_id: str, status: str, progress_info: str | None = None
+) -> None:
+    """
+    Update story status and progress info.
+
+    Args:
+        story_id: UUID of the story
+        status: New status value (from StoryStatus enum)
+        progress_info: Optional progress details (e.g., "Part 2/3: generating audio")
+    """
+    from sqlalchemy import update
+
+    from .models import Story
+
+    with get_session() as session:
+        stmt = update(Story).where(Story.id == story_id).values(status=status)
+        if progress_info is not None:
+            stmt = stmt.values(progress_info=progress_info)
+        session.execute(stmt)

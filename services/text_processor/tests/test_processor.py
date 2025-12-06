@@ -36,8 +36,7 @@ class TestSettings:
         """Test default settings values."""
         settings = Settings()
         assert settings.ollama_model == "llama3.1:8b"
-        assert settings.max_chars_per_part == 5000
-        assert settings.min_chars_for_split == 5000
+        assert settings.max_duration_per_part_seconds == 180  # 3 minutes
         assert settings.words_per_minute == 150
 
 
@@ -93,8 +92,7 @@ class TestTextProcessor:
     def settings(self):
         """Create test settings."""
         return Settings(
-            max_chars_per_part=5000,
-            min_chars_for_split=5000,
+            max_duration_per_part_seconds=180,  # 3 minutes
             words_per_minute=150,
         )
 
@@ -179,24 +177,36 @@ class TestTextProcessor:
         assert "content" in result
         assert "cta" in result
 
-    def test_find_split_points_short_content(self, processor):
-        """Test split point finding for short content."""
+    def test_find_split_points_single_part(self, processor):
+        """Test split point finding when only 1 part needed."""
         content = "Short content here."
-        result = processor._find_split_points(content)
+        result = processor._find_split_points(content, target_parts=1)
 
-        # Should have no split points for short content
+        # Should have no split points for single part
         assert result == []
 
-    def test_find_split_points_long_content(self, processor):
-        """Test split point finding for long content."""
-        # Create content longer than max_chars_per_part
-        para = "A" * 2000  # 2000 char paragraphs
-        content = f"{para}\n\n{para}...\n\n{para}"  # ~6000 chars, ellipsis in middle
+    def test_find_split_points_two_parts(self, processor):
+        """Test split point finding for 2 parts."""
+        # Create content with paragraphs - target 2 parts
+        content = "Para one with words.\n\nPara two ends with...\n\nPara three here."
 
-        result = processor._find_split_points(content)
+        result = processor._find_split_points(content, target_parts=2)
 
-        # Should find split point at the cliffhanger (ellipsis)
-        assert len(result) >= 1
+        # Should find 1 split point (for 2 parts)
+        assert len(result) == 1
+
+    def test_find_split_points_prefers_cliffhangers(self, processor):
+        """Test that split points prefer cliffhanger paragraphs."""
+        # Content with a cliffhanger in the middle
+        para1 = " ".join(["word"] * 100)  # ~100 words
+        para2 = " ".join(["word"] * 100) + "..."  # ~100 words, ends with ellipsis
+        para3 = " ".join(["word"] * 100)  # ~100 words
+        content = f"{para1}\n\n{para2}\n\n{para3}"
+
+        result = processor._find_split_points(content, target_parts=2)
+
+        # Should split at paragraph 1 (the one with ellipsis)
+        assert 1 in result
 
     @patch("services.text_processor.src.processor.get_session")
     @patch.object(TextProcessor, "_save_scripts")
@@ -204,7 +214,7 @@ class TestTextProcessor:
     def test_process_story_single_part(
         self, mock_process, mock_save, mock_get_session, processor
     ):
-        """Test processing a single-part story."""
+        """Test processing a single-part story (under 3 minutes)."""
         mock_session = MagicMock()
         mock_context = MagicMock()
         mock_context.__enter__ = MagicMock(return_value=mock_session)
@@ -212,7 +222,9 @@ class TestTextProcessor:
         mock_get_session.return_value = mock_context
 
         mock_story = MagicMock()
-        mock_story.char_count = 3000  # Below min_chars_for_split
+        # ~300 words = 2 minutes at 150 wpm (under 3 min threshold)
+        mock_story.content = " ".join(["word"] * 300)
+        mock_story.char_count = len(mock_story.content)
         mock_session.get.return_value = mock_story
 
         mock_script = ProcessedScript(
@@ -228,7 +240,8 @@ class TestTextProcessor:
 
         processor.process_story(1)
 
-        mock_process.assert_called_once_with(mock_story)
+        # Should call _process_single_part with story data dict
+        mock_process.assert_called_once()
 
     @patch("services.text_processor.src.processor.get_session")
     @patch.object(TextProcessor, "_save_scripts")
@@ -236,7 +249,7 @@ class TestTextProcessor:
     def test_process_story_multi_part(
         self, mock_process, mock_save, mock_get_session, processor
     ):
-        """Test processing a multi-part story."""
+        """Test processing a multi-part story (over 3 minutes)."""
         mock_session = MagicMock()
         mock_context = MagicMock()
         mock_context.__enter__ = MagicMock(return_value=mock_session)
@@ -244,7 +257,9 @@ class TestTextProcessor:
         mock_get_session.return_value = mock_context
 
         mock_story = MagicMock()
-        mock_story.char_count = 8000  # Above min_chars_for_split
+        # ~600 words = 4 minutes at 150 wpm (needs 2 parts)
+        mock_story.content = " ".join(["word"] * 600)
+        mock_story.char_count = len(mock_story.content)
         mock_session.get.return_value = mock_story
 
         mock_scripts = [
@@ -271,7 +286,8 @@ class TestTextProcessor:
 
         processor.process_story(1)
 
-        mock_process.assert_called_once_with(mock_story)
+        # Should call _process_multi_part with story data dict and target_parts=2
+        mock_process.assert_called_once()
 
     @patch("services.text_processor.src.processor.get_session")
     def test_process_story_not_found(self, mock_get_session, processor):

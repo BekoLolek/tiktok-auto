@@ -77,20 +77,33 @@ def process_story(self, story_id: str) -> dict[str, Any]:
     Returns:
         Dict with processing results including script IDs
     """
+    from shared.python.db import StoryStatus, update_story_progress
+
     logger.info(f"Processing story: {story_id}")
+
+    # Update status to scripting
+    update_story_progress(story_id, StoryStatus.SCRIPTING.value, "Generating scripts with LLM...")
 
     try:
         # Import here to avoid circular imports
         from services.text_processor.src.processor import TextProcessor
 
         processor = TextProcessor()
-        script_ids = processor.process(story_id)
+        script_ids = processor.process_story(story_id)
+
+        # Update progress
+        update_story_progress(
+            story_id,
+            StoryStatus.SCRIPTING.value,
+            f"Scripts created: {len(script_ids)} part(s)"
+        )
 
         logger.info(f"Story {story_id} processed into {len(script_ids)} scripts")
         return {"status": "success", "story_id": story_id, "script_ids": script_ids}
 
     except Exception as e:
         logger.error(f"Story processing failed: {e}")
+        update_story_progress(story_id, StoryStatus.FAILED.value, f"Scripting failed: {e}")
         raise TransientError(str(e)) from e
 
 
@@ -121,7 +134,7 @@ def generate_audio(self, script_id: str) -> dict[str, Any]:
         audio_id = synthesizer.synthesize(script_id)
 
         logger.info(f"Audio generated for script {script_id}: {audio_id}")
-        return {"status": "success", "script_id": script_id, "audio_id": audio_id}
+        return {"status": "success", "script_id": script_id, "audio_id": str(audio_id)}
 
     except Exception as e:
         logger.error(f"Audio generation failed: {e}")
@@ -157,7 +170,7 @@ def render_video(self, audio_id: str) -> dict[str, Any]:
         video_id = renderer.render(audio_id)
 
         logger.info(f"Video rendered for audio {audio_id}: {video_id}")
-        return {"status": "success", "audio_id": audio_id, "video_id": video_id}
+        return {"status": "success", "audio_id": audio_id, "video_id": str(video_id)}
 
     except Exception as e:
         logger.error(f"Video rendering failed: {e}")
@@ -173,7 +186,7 @@ def render_video(self, audio_id: str) -> dict[str, Any]:
 )
 def upload_video(self, video_id: str, batch_id: str | None = None) -> dict[str, Any]:
     """
-    Upload video to TikTok.
+    Upload video to TikTok via the uploader service.
 
     Args:
         video_id: UUID of the video to upload
@@ -182,23 +195,60 @@ def upload_video(self, video_id: str, batch_id: str | None = None) -> dict[str, 
     Returns:
         Dict with upload results
     """
+    import httpx
+
+    from shared.python.db import Video, get_session
+
     logger.info(f"Uploading video: {video_id}")
 
     try:
-        # Import here to avoid circular imports
-        from services.uploader.src.tiktok import TikTokUploader
+        # Get video details from database
+        with get_session() as session:
+            video = session.get(Video, video_id)
+            if not video:
+                raise ValueError(f"Video {video_id} not found")
 
-        uploader = TikTokUploader()
-        result = uploader.upload(video_id, batch_id)
+            video_data = {
+                "id": str(video.id),
+                "file_path": video.file_path,
+            }
 
-        if result["status"] == "success":
-            logger.info(f"Video {video_id} uploaded successfully: {result['url']}")
-        elif result["status"] == "manual_required":
+        # Call the uploader service
+        uploader_url = os.getenv("UPLOADER_URL", "http://uploader:3000")
+
+        with httpx.Client(timeout=300.0) as client:
+            response = client.post(
+                f"{uploader_url}/upload",
+                json={
+                    "videoId": video_data["id"],
+                    "videoPath": video_data["file_path"],
+                },
+            )
+            response.raise_for_status()
+            result = response.json()
+
+        if result.get("status") == "success":
+            logger.info(f"Video {video_id} uploaded successfully: {result.get('platformUrl')}")
+            return {
+                "status": "success",
+                "video_id": video_id,
+                "platform_video_id": result.get("platformVideoId"),
+                "url": result.get("platformUrl"),
+            }
+        elif result.get("status") == "manual_required":
             logger.warning(f"Video {video_id} requires manual upload")
-            # Send email notification
-            send_failure_notification.delay(video_id, "manual_required", result.get("reason"))
-
-        return result
+            send_failure_notification.delay(video_id, "manual_required", result.get("message"))
+            return {
+                "status": "manual_required",
+                "video_id": video_id,
+                "reason": result.get("message"),
+            }
+        else:
+            return {
+                "status": result.get("status", "unknown"),
+                "video_id": video_id,
+                "reason": result.get("message"),
+            }
 
     except MaxRetriesExceededError:
         logger.error(f"Upload failed after max retries: {video_id}")
@@ -274,10 +324,21 @@ def process_scripts_to_videos(self, process_result: dict[str, Any]) -> dict[str,
     Returns:
         Dict with all video IDs
     """
+    from shared.python.db import StoryStatus, update_story_progress
+
     script_ids = process_result.get("script_ids", [])
+    story_id = process_result.get("story_id")
+    total_parts = len(script_ids)
 
     if not script_ids:
         return {"status": "no_scripts", "video_ids": []}
+
+    # Update status to generating audio
+    update_story_progress(
+        story_id,
+        StoryStatus.GENERATING_AUDIO.value,
+        f"Generating audio for {total_parts} part(s)..."
+    )
 
     # Create a group of tasks for parallel processing
     audio_tasks = group(generate_audio.s(sid) for sid in script_ids)
@@ -287,17 +348,26 @@ def process_scripts_to_videos(self, process_result: dict[str, Any]) -> dict[str,
 
     # Now render videos for each audio
     video_ids = []
-    for result in audio_results:
+    for i, result in enumerate(audio_results, 1):
         if result.get("status") == "success":
             audio_id = result["audio_id"]
+
+            # Update status for video rendering
+            update_story_progress(
+                story_id,
+                StoryStatus.RENDERING_VIDEO.value,
+                f"Rendering video {i}/{total_parts}..."
+            )
+
             video_result = render_video.apply_async(args=[audio_id]).get()
             if video_result.get("status") == "success":
                 video_ids.append(video_result["video_id"])
 
     return {
         "status": "success",
-        "story_id": process_result.get("story_id"),
+        "story_id": story_id,
         "video_ids": video_ids,
+        "total_parts": total_parts,
     }
 
 
@@ -312,11 +382,21 @@ def upload_batch(self, videos_result: dict[str, Any]) -> dict[str, Any]:
     Returns:
         Dict with upload results for all videos
     """
+    from shared.python.db import StoryStatus, update_story_progress
+
     video_ids = videos_result.get("video_ids", [])
     story_id = videos_result.get("story_id")
+    total_parts = videos_result.get("total_parts", len(video_ids))
 
     if not video_ids:
         return {"status": "no_videos", "uploads": []}
+
+    # Update status to uploading
+    update_story_progress(
+        story_id,
+        StoryStatus.UPLOADING.value,
+        f"Uploading {len(video_ids)} video(s)..."
+    )
 
     # Create batch record
     from shared.python.db import Batch, BatchStatus, get_session
@@ -350,6 +430,26 @@ def upload_batch(self, videos_result: dict[str, Any]) -> dict[str, Any]:
                 batch.status = BatchStatus.PARTIAL.value
             else:
                 batch.status = BatchStatus.FAILED.value
+
+    # Update story final status
+    if successful == len(video_ids):
+        update_story_progress(
+            story_id,
+            StoryStatus.COMPLETED.value,
+            f"All {successful} video(s) uploaded successfully!"
+        )
+    elif successful > 0:
+        update_story_progress(
+            story_id,
+            StoryStatus.COMPLETED.value,
+            f"Partial: {successful}/{len(video_ids)} uploaded"
+        )
+    else:
+        update_story_progress(
+            story_id,
+            StoryStatus.FAILED.value,
+            "Upload failed for all videos"
+        )
 
     return {
         "status": "success" if successful == len(video_ids) else "partial",

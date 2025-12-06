@@ -1,14 +1,15 @@
-"""TTS synthesizer module using Piper."""
+"""TTS synthesizer module using Edge TTS (Microsoft Neural Voices)."""
 
 from __future__ import annotations
 
-import io
+import asyncio
 import logging
-import socket
-import wave
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+import edge_tts
+from mutagen.mp3 import MP3
 
 from shared.python.db import Audio, Script, get_session
 
@@ -24,130 +25,99 @@ logger = logging.getLogger(__name__)
 class AudioResult:
     """Result of audio synthesis."""
 
-    script_id: int
+    script_id: str
+    audio_id: str
     audio_path: str
     duration_seconds: float
-    sample_rate: int
-    voice: str
+    voice_model: str
 
 
-class PiperClient:
-    """Client for Piper TTS using Wyoming protocol."""
+class EdgeTTSClient:
+    """Client for Edge TTS (Microsoft Neural Voices)."""
 
-    def __init__(self, host: str, port: int):
-        """Initialize Piper client."""
-        self.host = host
-        self.port = port
+    def __init__(self, rate: str = "+0%", pitch: str = "+0Hz"):
+        """Initialize Edge TTS client.
 
-    def synthesize(self, text: str, voice: str | None = None) -> bytes:
-        """Synthesize text to audio using Wyoming protocol.
+        Args:
+            rate: Speech rate adjustment (e.g., "+10%", "-20%")
+            pitch: Pitch adjustment (e.g., "+5Hz", "-10Hz")
+        """
+        self.rate = rate
+        self.pitch = pitch
+
+    def synthesize(self, text: str, voice: str, output_path: str) -> None:
+        """Synthesize text to audio file.
 
         Args:
             text: Text to synthesize
-            voice: Optional voice name override
-
-        Returns:
-            Raw WAV audio bytes
+            voice: Voice name (e.g., "en-US-ChristopherNeural")
+            output_path: Path to save the audio file
         """
-        # Wyoming protocol uses JSON-lines over socket
-        import json
+        asyncio.run(self._synthesize_async(text, voice, output_path))
 
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.settimeout(60.0)
-            sock.connect((self.host, self.port))
+    async def _synthesize_async(self, text: str, voice: str, output_path: str) -> None:
+        """Async implementation of synthesize."""
+        communicate = edge_tts.Communicate(
+            text=text,
+            voice=voice,
+            rate=self.rate,
+            pitch=self.pitch,
+        )
+        await communicate.save(output_path)
 
-            # Send synthesize request
-            request = {
-                "type": "synthesize",
-                "data": {
-                    "text": text,
-                },
-            }
-            if voice:
-                request["data"]["voice"] = {"name": voice}
-
-            request_bytes = (json.dumps(request) + "\n").encode("utf-8")
-            sock.sendall(request_bytes)
-
-            # Read response
-            audio_chunks = []
-            buffer = b""
-
-            while True:
-                chunk = sock.recv(4096)
-                if not chunk:
-                    break
-
-                buffer += chunk
-
-                # Check for audio-chunk or audio-stop messages
-                while b"\n" in buffer:
-                    line, buffer = buffer.split(b"\n", 1)
-                    try:
-                        msg = json.loads(line.decode("utf-8"))
-                        if msg.get("type") == "audio-chunk":
-                            # Audio data is base64 encoded
-                            import base64
-                            audio_data = base64.b64decode(msg["data"]["audio"])
-                            audio_chunks.append(audio_data)
-                        elif msg.get("type") == "audio-stop":
-                            # Done receiving
-                            return b"".join(audio_chunks)
-                    except (json.JSONDecodeError, KeyError):
-                        continue
-
-            return b"".join(audio_chunks)
-
-    def health_check(self) -> bool:
-        """Check if Piper is available."""
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-                sock.settimeout(5.0)
-                sock.connect((self.host, self.port))
-                return True
-        except (TimeoutError, OSError):
-            return False
+    @staticmethod
+    async def list_voices() -> list[dict]:
+        """List available voices."""
+        voices = await edge_tts.list_voices()
+        return voices
 
 
 class TTSSynthesizer:
-    """Synthesizes scripts to audio using Piper TTS."""
+    """Synthesizes scripts to audio using Edge TTS."""
 
     def __init__(self, settings: Settings | None = None):
         """Initialize synthesizer with settings."""
         self.settings = settings or get_settings()
-        self._client: PiperClient | None = None
+        self._client: EdgeTTSClient | None = None
 
     @property
-    def client(self) -> PiperClient:
-        """Lazy-load Piper client."""
+    def client(self) -> EdgeTTSClient:
+        """Lazy-load Edge TTS client."""
         if self._client is None:
-            self._client = PiperClient(
-                host=self.settings.piper_host,
-                port=self.settings.piper_port,
+            self._client = EdgeTTSClient(
+                rate=self.settings.voice_rate,
+                pitch=self.settings.voice_pitch,
             )
         return self._client
 
-    def synthesize_script(self, script_id: int) -> AudioResult:
+    def synthesize(self, script_id: str) -> str:
         """Synthesize a script to audio.
 
         Args:
-            script_id: ID of script to synthesize
+            script_id: UUID of script to synthesize
 
         Returns:
-            AudioResult with path to generated audio
+            Audio ID (UUID as string)
         """
         with get_session() as session:
             script = session.get(Script, script_id)
             if not script:
                 raise ValueError(f"Script {script_id} not found")
 
-            # Story context available if needed via script.story_id
+            # Extract data while in session
+            script_data = {
+                "id": str(script.id),
+                "voice_gender": script.voice_gender,
+                "hook": script.hook,
+                "content": script.content,
+                "cta": script.cta,
+            }
 
         # Select voice based on script setting
-        voice = self._get_voice(script.voice_gender)
+        voice = self._get_voice(script_data["voice_gender"])
 
         # Combine hook, content, and CTA for full narration
-        full_text = self._build_narration_text(script)
+        full_text = self._build_narration_text_from_dict(script_data)
 
         logger.info(
             f"Synthesizing script {script_id}",
@@ -158,40 +128,34 @@ class TTSSynthesizer:
             },
         )
 
+        # Generate audio file path
+        filename = f"script_{script_id}.{self.settings.audio_format}"
+        audio_path = self.settings.audio_path / filename
+
         # Generate audio
         try:
-            audio_data = self.client.synthesize(full_text, voice)
+            self.client.synthesize(full_text, voice, str(audio_path))
         except Exception as e:
             logger.error(f"Synthesis failed: {e}")
             raise
 
-        # Save audio file
-        audio_path = self._save_audio(script_id, audio_data)
-
         # Calculate duration
-        duration = self._get_audio_duration(audio_data)
+        duration = self._get_audio_duration(str(audio_path))
 
-        # Save to database
-        result = AudioResult(
-            script_id=script_id,
-            audio_path=str(audio_path),
-            duration_seconds=duration,
-            sample_rate=self.settings.sample_rate,
-            voice=voice,
-        )
-
-        self._save_audio_record(result)
+        # Save to database and get audio ID
+        audio_id = self._save_audio_record(script_id, str(audio_path), duration, voice)
 
         logger.info(
             f"Synthesized script {script_id}",
             extra={
                 "script_id": script_id,
+                "audio_id": audio_id,
                 "duration": duration,
                 "path": str(audio_path),
             },
         )
 
-        return result
+        return audio_id
 
     def _get_voice(self, voice_gender: str | None) -> str:
         """Get voice name based on gender."""
@@ -199,76 +163,70 @@ class TTSSynthesizer:
             return self.settings.female_voice
         return self.settings.male_voice
 
-    def _build_narration_text(self, script: Script) -> str:
-        """Build full narration text from script parts."""
+    def _build_narration_text_from_dict(self, script: dict) -> str:
+        """Build full narration text from script data dict."""
+        import re
+
         parts = []
 
         # Add hook
-        if script.hook:
-            parts.append(script.hook)
+        if script.get("hook"):
+            parts.append(script["hook"])
 
         # Add main content
-        parts.append(script.content)
+        parts.append(script["content"])
 
-        # Add CTA
-        if script.cta:
-            parts.append(script.cta)
+        # Add CTA (but strip hashtags - they shouldn't be spoken)
+        if script.get("cta"):
+            cta = script["cta"]
+            # Remove hashtags (e.g., #storytime #reddit)
+            cta = re.sub(r'#\w+', '', cta)
+            # Clean up extra whitespace
+            cta = ' '.join(cta.split())
+            if cta:
+                parts.append(cta)
 
-        return " ".join(parts)
+        text = " ".join(parts)
 
-    def _save_audio(self, script_id: int, audio_data: bytes) -> Path:
-        """Save audio data to file."""
-        filename = f"script_{script_id}.{self.settings.audio_format}"
-        output_path = self.settings.audio_path / filename
+        # Also remove any stray hashtags from the full text
+        text = re.sub(r'#\w+', '', text)
+        text = ' '.join(text.split())
 
-        # If audio_data is raw PCM, wrap in WAV
-        if not audio_data.startswith(b"RIFF"):
-            audio_data = self._wrap_in_wav(audio_data)
+        return text
 
-        with open(output_path, "wb") as f:
-            f.write(audio_data)
-
-        return output_path
-
-    def _wrap_in_wav(self, pcm_data: bytes) -> bytes:
-        """Wrap raw PCM data in WAV container."""
-        buffer = io.BytesIO()
-        with wave.open(buffer, "wb") as wav:
-            wav.setnchannels(1)
-            wav.setsampwidth(2)  # 16-bit
-            wav.setframerate(self.settings.sample_rate)
-            wav.writeframes(pcm_data)
-        return buffer.getvalue()
-
-    def _get_audio_duration(self, audio_data: bytes) -> float:
+    def _get_audio_duration(self, audio_path: str) -> float:
         """Calculate audio duration in seconds."""
         try:
-            buffer = io.BytesIO(audio_data)
-            with wave.open(buffer, "rb") as wav:
-                frames = wav.getnframes()
-                rate = wav.getframerate()
-                return frames / rate
-        except Exception:
-            # Estimate from raw data size
-            # Assuming 16-bit mono at sample_rate
-            bytes_per_sample = 2
-            return len(audio_data) / (self.settings.sample_rate * bytes_per_sample)
+            audio = MP3(audio_path)
+            return audio.info.length
+        except Exception as e:
+            logger.warning(f"Could not get audio duration: {e}")
+            # Return estimate based on text (fallback)
+            return 0.0
 
-    def _save_audio_record(self, result: AudioResult) -> None:
-        """Save audio record to database."""
+    def _save_audio_record(
+        self, script_id: str, file_path: str, duration: float, voice: str
+    ) -> str:
+        """Save audio record to database and return audio ID."""
         with get_session() as session:
             audio = Audio(
-                script_id=result.script_id,
-                file_path=result.audio_path,
-                duration=result.duration_seconds,
-                sample_rate=result.sample_rate,
-                voice=result.voice,
+                script_id=script_id,
+                file_path=file_path,
+                duration_seconds=duration,
+                voice_model=voice,
             )
             session.add(audio)
+            session.flush()
+            audio_id = str(audio.id)
             session.commit()
+            return audio_id
 
 
-def synthesize_script(script_id: int) -> AudioResult:
-    """Synthesize a script - convenience function."""
+def synthesize(script_id: str) -> str:
+    """Synthesize a script - convenience function.
+
+    Returns:
+        Audio ID (UUID as string)
+    """
     synthesizer = TTSSynthesizer()
-    return synthesizer.synthesize_script(script_id)
+    return synthesizer.synthesize(script_id)

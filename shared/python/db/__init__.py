@@ -8,6 +8,7 @@ from .connection import (
     get_db,
     get_session,
     init_db,
+    update_story_progress,
 )
 from .models import (
     Audio,
@@ -47,4 +48,5 @@ __all__ = [
     "init_db",
     "drop_db",
     "get_database_url",
+    "update_story_progress",
 ]

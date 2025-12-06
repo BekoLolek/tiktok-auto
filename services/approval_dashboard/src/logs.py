@@ -30,7 +30,7 @@ class LogService:
         self,
         service: str | None = None,
         level: str | None = None,
-        story_id: int | None = None,
+        story_id: str | None = None,
         start_time: datetime | None = None,
         end_time: datetime | None = None,
         page: int = 1,
@@ -100,7 +100,7 @@ class LogService:
             return None
 
     async def get_story_logs(
-        self, story_id: int, limit: int = 100
+        self, story_id: str, limit: int = 100
     ) -> list[dict[str, Any]]:
         """Get all logs related to a specific story."""
         logs, _ = await self.search_logs(story_id=story_id, per_page=limit)

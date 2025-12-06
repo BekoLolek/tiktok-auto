@@ -34,8 +34,8 @@ class Settings(BaseSettings):
     video_output_dir: str = "/data/videos"
     temp_dir: str = "/data/temp"
 
-    # Caption settings
-    caption_font: str = "Arial-Bold"
+    # Caption settings (DejaVu available in container via fonts-dejavu-core)
+    caption_font: str = "DejaVu-Sans-Bold"
     caption_font_size: int = 60
     caption_color: str = "white"
     caption_stroke_color: str = "black"

@@ -368,9 +368,9 @@ services:
   celery-worker:
     build:
       context: .
-      dockerfile: services/text_processor/Dockerfile
+      dockerfile: docker/celery-worker.Dockerfile
     container_name: tiktok-auto-celery-worker
-    command: celery -A shared.python.celery_app.app worker --loglevel=info --concurrency=2
+    command: celery -A shared.python.celery_app.app worker --loglevel=info --concurrency=2 -Q celery,text_processing,tts,video,upload,fetch,maintenance
     environment:
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
@@ -386,15 +386,21 @@ services:
       - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.1:8b}
       - PIPER_HOST=piper
       - PIPER_PORT=10200
+      - AUDIO_OUTPUT_DIR=/data/audio
+      - VIDEO_OUTPUT_DIR=/data/videos
+      - BACKGROUND_VIDEOS_DIR=/data/backgrounds
+      - TEMP_DIR=/data/temp
+      - UPLOADER_URL=http://uploader:3000
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
       - ./data:/data
-      - ./shared:/app/shared
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      piper:
+        condition: service_started
     networks:
       - tiktok-auto-network
 

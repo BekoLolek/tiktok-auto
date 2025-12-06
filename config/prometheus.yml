@@ -39,17 +39,15 @@ scrape_configs:
       - targets: ['celery-worker:5555']
     metrics_path: '/metrics'
 
-  # Redis metrics (via redis_exporter if added)
-  - job_name: 'redis'
-    static_configs:
-      - targets: ['redis:6379']
-    # Note: Requires redis_exporter sidecar
+  # Redis metrics (disabled - requires redis_exporter sidecar)
+  # - job_name: 'redis'
+  #   static_configs:
+  #     - targets: ['redis:6379']
 
-  # PostgreSQL metrics (via postgres_exporter if added)
-  - job_name: 'postgres'
-    static_configs:
-      - targets: ['postgres:5432']
-    # Note: Requires postgres_exporter sidecar
+  # PostgreSQL metrics (disabled - requires postgres_exporter sidecar)
+  # - job_name: 'postgres'
+  #   static_configs:
+  #     - targets: ['postgres:5432']
 
   # Elasticsearch metrics
   - job_name: 'elasticsearch'

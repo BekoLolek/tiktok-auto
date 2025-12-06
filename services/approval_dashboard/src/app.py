@@ -77,6 +77,26 @@ templates.env.filters["datetime"] = format_datetime
 templates.env.filters["truncate"] = truncate_text
 
 
+def story_to_dict(story: Story) -> dict:
+    """Convert Story object to dictionary to avoid DetachedInstanceError."""
+    return {
+        "id": story.id,
+        "reddit_id": story.reddit_id,
+        "subreddit": story.subreddit,
+        "title": story.title,
+        "content": story.content,
+        "author": story.author,
+        "score": story.score,
+        "url": story.url,
+        "char_count": story.char_count,
+        "status": story.status,
+        "error_message": story.error_message,
+        "rejection_reason": story.rejection_reason,
+        "created_at": story.created_at,
+        "updated_at": story.updated_at,
+    }
+
+
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     """Main dashboard view."""
@@ -107,12 +127,12 @@ async def dashboard(request: Request):
         ).scalar()
 
         # Get recent stories
-        recent_stories = session.execute(
+        recent_stories_orm = session.execute(
             select(Story).order_by(desc(Story.created_at)).limit(10)
         ).scalars().all()
 
-        # Expunge objects so they can be used outside session
-        session.expunge_all()
+        # Convert to dictionaries to avoid DetachedInstanceError
+        recent_stories = [story_to_dict(s) for s in recent_stories_orm]
 
     return templates.TemplateResponse(
         "dashboard.html",
@@ -155,12 +175,12 @@ async def list_stories(
             .limit(settings.stories_per_page)
         )
 
-        stories = session.execute(query).scalars().all()
+        stories_orm = session.execute(query).scalars().all()
 
         total_pages = (total_count + settings.stories_per_page - 1) // settings.stories_per_page
 
-        # Expunge objects so they can be used outside session
-        session.expunge_all()
+        # Convert to dictionaries to avoid DetachedInstanceError
+        stories = [story_to_dict(s) for s in stories_orm]
 
     return templates.TemplateResponse(
         "stories.html",
@@ -274,7 +294,7 @@ async def approve_story(story_id: str):
         session.commit()
 
         # Trigger processing pipeline
-        celery_app.send_task("process_story", args=[story_id])
+        celery_app.send_task("shared.python.celery_app.tasks.process_story", args=[story_id])
 
         logger.info(f"Story {story_id} approved and queued for processing")
 
@@ -322,7 +342,7 @@ async def retry_story(story_id: str):
         session.commit()
 
         # Re-trigger processing
-        celery_app.send_task("process_story", args=[story_id])
+        celery_app.send_task("shared.python.celery_app.tasks.process_story", args=[story_id])
 
         logger.info(f"Story {story_id} queued for retry")
 
@@ -334,7 +354,7 @@ async def view_logs(
     request: Request,
     service: str | None = Query(None),
     level: str | None = Query(None),
-    story_id: int | None = Query(None),
+    story_id: str | None = Query(None),
     page: int = Query(1, ge=1),
 ):
     """View logs from Elasticsearch."""
