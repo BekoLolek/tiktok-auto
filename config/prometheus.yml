@@ -1,0 +1,57 @@
+# Prometheus configuration for TikTok Auto
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'tiktok-auto'
+
+# Alerting configuration
+alerting:
+  alertmanagers: []
+
+# Rule files
+rule_files: []
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Dashboard service
+  - job_name: 'dashboard'
+    static_configs:
+      - targets: ['dashboard:8080']
+    metrics_path: '/metrics'
+
+  # Uploader service
+  - job_name: 'uploader'
+    static_configs:
+      - targets: ['uploader:3000']
+    metrics_path: '/metrics'
+
+  # Celery worker (via flower or custom endpoint)
+  - job_name: 'celery-worker'
+    static_configs:
+      - targets: ['celery-worker:5555']
+    metrics_path: '/metrics'
+
+  # Redis metrics (via redis_exporter if added)
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:6379']
+    # Note: Requires redis_exporter sidecar
+
+  # PostgreSQL metrics (via postgres_exporter if added)
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres:5432']
+    # Note: Requires postgres_exporter sidecar
+
+  # Elasticsearch metrics
+  - job_name: 'elasticsearch'
+    static_configs:
+      - targets: ['elasticsearch:9200']
+    metrics_path: '/_prometheus/metrics'

@@ -89,6 +89,52 @@ services:
       - tiktok-auto-network
 
   # ===================
+  # Monitoring Stack
+  # ===================
+
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: tiktok-auto-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - tiktok-auto-network
+
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: tiktok-auto-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - tiktok-auto-network
+
+  # ===================
   # Application Services
   # ===================
 
@@ -359,3 +405,5 @@ volumes:
   ollama-data:
   piper-data:
   uploader-session:
+  prometheus-data:
+  grafana-data:

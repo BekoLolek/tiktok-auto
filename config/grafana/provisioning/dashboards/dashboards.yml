@@ -1,0 +1,15 @@
+# Grafana dashboards provisioning
+
+apiVersion: 1
+
+providers:
+  - name: 'TikTok Auto Dashboards'
+    orgId: 1
+    folder: 'TikTok Auto'
+    folderUid: 'tiktok-auto'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards/json
