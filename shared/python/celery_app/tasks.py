@@ -177,16 +177,9 @@ def render_video(self, audio_id: str) -> dict[str, Any]:
         raise TransientError(str(e)) from e
 
 
-@app.task(
-    bind=True,
-    max_retries=3,
-    default_retry_delay=120,
-    autoretry_for=(TransientError,),
-    retry_backoff=True,
-)
-def upload_video(self, video_id: str, batch_id: str | None = None) -> dict[str, Any]:
+def _do_upload_video(video_id: str, batch_id: str | None = None) -> dict[str, Any]:
     """
-    Upload video to TikTok via the uploader service.
+    Core upload logic - can be called directly without Celery.
 
     Args:
         video_id: UUID of the video to upload
@@ -237,7 +230,6 @@ def upload_video(self, video_id: str, batch_id: str | None = None) -> dict[str, 
             }
         elif result.get("status") == "manual_required":
             logger.warning(f"Video {video_id} requires manual upload")
-            send_failure_notification.delay(video_id, "manual_required", result.get("message"))
             return {
                 "status": "manual_required",
                 "video_id": video_id,
@@ -250,14 +242,33 @@ def upload_video(self, video_id: str, batch_id: str | None = None) -> dict[str, 
                 "reason": result.get("message"),
             }
 
-    except MaxRetriesExceededError:
-        logger.error(f"Upload failed after max retries: {video_id}")
-        send_failure_notification.delay(video_id, "max_retries_exceeded", "Upload failed")
-        return {"status": "failed", "video_id": video_id, "reason": "max_retries_exceeded"}
-
     except Exception as e:
         logger.error(f"Upload failed: {e}")
-        raise TransientError(str(e)) from e
+        return {"status": "failed", "video_id": video_id, "reason": str(e)}
+
+
+@app.task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=120,
+    autoretry_for=(TransientError,),
+    retry_backoff=True,
+)
+def upload_video(self, video_id: str, batch_id: str | None = None) -> dict[str, Any]:
+    """
+    Upload video to TikTok via the uploader service (Celery task wrapper).
+
+    Args:
+        video_id: UUID of the video to upload
+        batch_id: Optional batch ID for multi-part uploads
+
+    Returns:
+        Dict with upload results
+    """
+    result = _do_upload_video(video_id, batch_id)
+    if result.get("status") == "failed":
+        raise TransientError(result.get("reason", "Upload failed"))
+    return result
 
 
 @app.task(bind=True)
@@ -313,7 +324,7 @@ def run_full_pipeline(story_id: str) -> Any:
     return pipeline.apply_async()
 
 
-@app.task(bind=True)
+@app.task(bind=True, soft_time_limit=1800, time_limit=3600)  # 30 min soft, 60 min hard
 def process_scripts_to_videos(self, process_result: dict[str, Any]) -> dict[str, Any]:
     """
     Process all scripts from a story into videos.
@@ -324,6 +335,9 @@ def process_scripts_to_videos(self, process_result: dict[str, Any]) -> dict[str,
     Returns:
         Dict with all video IDs
     """
+    from services.tts_service.src.synthesizer import TTSSynthesizer
+    from services.video_renderer.src.renderer import VideoRenderer
+
     from shared.python.db import StoryStatus, update_story_progress
 
     script_ids = process_result.get("script_ids", [])
@@ -340,28 +354,31 @@ def process_scripts_to_videos(self, process_result: dict[str, Any]) -> dict[str,
         f"Generating audio for {total_parts} part(s)..."
     )
 
-    # Create a group of tasks for parallel processing
-    audio_tasks = group(generate_audio.s(sid) for sid in script_ids)
-
-    # Execute audio generation
-    audio_results = audio_tasks.apply_async().get()
+    # Generate audio for each script (call directly, not as subtask)
+    synthesizer = TTSSynthesizer()
+    audio_ids = []
+    for i, script_id in enumerate(script_ids, 1):
+        logger.info(f"Generating audio {i}/{total_parts} for script {script_id}")
+        update_story_progress(
+            story_id,
+            StoryStatus.GENERATING_AUDIO.value,
+            f"Generating audio {i}/{total_parts}..."
+        )
+        audio_id = synthesizer.synthesize(script_id)
+        audio_ids.append(audio_id)
 
     # Now render videos for each audio
+    renderer = VideoRenderer()
     video_ids = []
-    for i, result in enumerate(audio_results, 1):
-        if result.get("status") == "success":
-            audio_id = result["audio_id"]
-
-            # Update status for video rendering
-            update_story_progress(
-                story_id,
-                StoryStatus.RENDERING_VIDEO.value,
-                f"Rendering video {i}/{total_parts}..."
-            )
-
-            video_result = render_video.apply_async(args=[audio_id]).get()
-            if video_result.get("status") == "success":
-                video_ids.append(video_result["video_id"])
+    for i, audio_id in enumerate(audio_ids, 1):
+        logger.info(f"Rendering video {i}/{total_parts} for audio {audio_id}")
+        update_story_progress(
+            story_id,
+            StoryStatus.RENDERING_VIDEO.value,
+            f"Rendering video {i}/{total_parts}..."
+        )
+        video_id = renderer.render(audio_id)
+        video_ids.append(video_id)
 
     return {
         "status": "success",
@@ -411,10 +428,16 @@ def upload_batch(self, videos_result: dict[str, Any]) -> dict[str, Any]:
         session.flush()
         batch_id = str(batch.id)
 
-    # Upload each video
+    # Upload each video (call directly to avoid Celery subtask blocking)
     upload_results = []
-    for video_id in video_ids:
-        result = upload_video.apply_async(args=[video_id, batch_id]).get()
+    for i, video_id in enumerate(video_ids, 1):
+        logger.info(f"Uploading video {i}/{len(video_ids)}: {video_id}")
+        update_story_progress(
+            story_id,
+            StoryStatus.UPLOADING.value,
+            f"Uploading video {i}/{len(video_ids)}..."
+        )
+        result = _do_upload_video(video_id, batch_id)
         upload_results.append(result)
 
     # Update batch status
