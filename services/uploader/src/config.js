@@ -24,8 +24,12 @@ const config = {
 
   // TikTok
   tiktok: {
-    cookiesPath: process.env.TIKTOK_COOKIES_PATH || '/data/tiktok_cookies.json',
-    sessionDir: process.env.SESSION_DIR || '/app/session',
+    cookiesPath: process.env.TIKTOK_COOKIES_PATH || (process.platform === 'win32'
+      ? 'C:\\Users\\L\\Desktop\\TikTok Auto\\data\\tiktok_cookies.json'
+      : '/data/tiktok_cookies.json'),
+    sessionDir: process.env.SESSION_DIR || (process.platform === 'win32'
+      ? 'C:\\Users\\L\\Desktop\\TikTok Auto\\data\\session'
+      : '/app/session'),
     uploadTimeout: parseInt(process.env.UPLOAD_TIMEOUT || '300000', 10), // 5 minutes
     maxRetries: parseInt(process.env.MAX_RETRIES || '3', 10),
     retryDelay: parseInt(process.env.RETRY_DELAY || '5000', 10), // 5 seconds

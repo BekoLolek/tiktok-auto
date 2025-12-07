@@ -47,6 +47,65 @@ app.get('/health', async (req, res) => {
   });
 });
 
+// Test upload endpoint - bypasses database for direct testing
+app.post('/test-upload', async (req, res) => {
+  const { videoPath, title, description, hashtags } = req.body;
+
+  if (!videoPath) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'videoPath is required',
+    });
+  }
+
+  logger.info('Test upload request received', { videoPath, title });
+
+  let uploader = null;
+
+  try {
+    // Initialize uploader
+    uploader = new TikTokUploader(logger);
+    await uploader.init();
+
+    // Check if logged in
+    const isLoggedIn = await uploader.isLoggedIn();
+    if (!isLoggedIn) {
+      logger.warn('Not logged in');
+      await uploader.close();
+      return res.json({
+        status: 'manual_required',
+        message: 'Login required - please authenticate manually',
+      });
+    }
+
+    // Perform upload
+    const result = await uploader.uploadVideo(videoPath, {
+      title: title || 'Test Video',
+      description: description || 'Test upload',
+      hashtags: hashtags || ['test'],
+    });
+
+    await uploader.close();
+
+    return res.json({
+      status: 'success',
+      result,
+    });
+
+  } catch (error) {
+    logger.error('Test upload failed', { error: error.message, stack: error.stack });
+
+    if (uploader) {
+      await uploader.close().catch(() => {});
+    }
+
+    return res.status(500).json({
+      status: 'error',
+      message: error.message,
+    });
+  }
+});
+
 // Login page - shows status and instructions
 app.get('/login', async (req, res) => {
   let uploader = null;
@@ -413,23 +472,23 @@ const server = app.listen(config.port, async () => {
   // Auto-start login flow if running in non-headless mode
   if (!config.browser.headless) {
     logger.info('Non-headless mode detected, starting login flow...');
+    logger.info('Will verify upload page access (not just home page login)...');
     let uploader = null;
     try {
       uploader = new TikTokUploader(logger);
       await uploader.init();
 
-      const isLoggedIn = await uploader.isLoggedIn();
-      if (isLoggedIn) {
-        logger.info('Already logged in to TikTok!');
-        await uploader.close();
-      } else {
-        logger.info('Not logged in. Browser opened - please log in to TikTok manually.');
-        logger.info('After logging in, the session will be saved automatically.');
-        // Wait for manual login (5 minutes timeout)
-        await uploader.waitForManualLogin(300000);
-        logger.info('Login successful! You can now stop the server (Ctrl+C).');
-        await uploader.close();
-      }
+      // Always verify upload page access, not just home page login
+      // TikTok requires separate authentication for creator/upload access
+      logger.info('Checking upload page access...');
+      logger.info('Browser opened - please log in to TikTok if prompted.');
+      logger.info('Wait until you see the upload form before pressing Ctrl+C.');
+
+      // waitForManualLogin now navigates to upload page and waits for file input
+      await uploader.waitForManualLogin(300000);
+      logger.info('Upload page access verified! Session saved.');
+      logger.info('You can now stop the server (Ctrl+C).');
+      await uploader.close();
     } catch (error) {
       logger.error('Login flow failed', { error: error.message });
       if (uploader) {

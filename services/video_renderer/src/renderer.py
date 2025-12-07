@@ -191,9 +191,12 @@ class VideoRenderer:
             # Create caption clips
             caption_clips = self._create_caption_clips(captions, duration)
 
+            # Create countdown timer clips
+            countdown_clips = self._create_countdown_clips(duration)
+
             # Compose final video
             final_clip = CompositeVideoClip(
-                [background] + caption_clips,
+                [background] + caption_clips + countdown_clips,
                 size=(self.settings.video_width, self.settings.video_height),
             )
             # MoviePy 2.x uses with_audio instead of set_audio
@@ -336,42 +339,63 @@ class VideoRenderer:
         """
         clips = []
 
+        # Vibrant colors for random caption coloring (all with good contrast against black stroke)
+        caption_colors = [
+            "yellow",
+            "cyan",
+            "magenta",
+            "lime",
+            "orange",
+            "white",
+            "#FF6B6B",  # coral red
+            "#4ECDC4",  # teal
+            "#FFE66D",  # bright yellow
+            "#95E1D3",  # mint
+            "#F38181",  # salmon
+            "#AA96DA",  # lavender
+            "#FCBAD3",  # pink
+            "#A8D8EA",  # light blue
+        ]
+
         for caption in captions:
             try:
+                # Pick a random color for this caption
+                caption_color = random.choice(caption_colors)
+
+                # Add padding character for descenders (y, g, j, p, q, commas)
+                # This prevents the bottom of letters from being cut off
+                padded_text = caption.text + " "
+
                 # MoviePy 2.x has different API than 1.x
                 try:
-                    # MoviePy 2.x API
+                    # MoviePy 2.x API - use method="label" for better text rendering
                     txt_clip = TextClip(
-                        text=caption.text,
+                        text=padded_text,
                         font_size=self.settings.caption_font_size,
-                        color=self.settings.caption_color,
+                        color=caption_color,
                         font=self.settings.caption_font,
                         stroke_color=self.settings.caption_stroke_color,
                         stroke_width=self.settings.caption_stroke_width,
-                        method="caption",
-                        size=(self.settings.video_width - 100, None),
+                        text_align="center",
+                        horizontal_align="center",
                     )
-                    # MoviePy 2.x uses with_* methods
-                    txt_clip = txt_clip.with_position(
-                        ("center", self.settings.video_height - self.settings.caption_margin_bottom)
-                    )
+                    # MoviePy 2.x uses with_* methods - center on screen
+                    txt_clip = txt_clip.with_position(("center", "center"))
                     txt_clip = txt_clip.with_start(caption.start_time)
                     txt_clip = txt_clip.with_duration(caption.end_time - caption.start_time)
                 except TypeError:
                     # MoviePy 1.x fallback
                     txt_clip = TextClip(
-                        caption.text,
+                        padded_text,
                         fontsize=self.settings.caption_font_size,
-                        color=self.settings.caption_color,
+                        color=caption_color,
                         font=self.settings.caption_font,
                         stroke_color=self.settings.caption_stroke_color,
                         stroke_width=self.settings.caption_stroke_width,
-                        method="caption",
-                        size=(self.settings.video_width - 100, None),
+                        align="center",
                     )
-                    txt_clip = txt_clip.set_position(
-                        ("center", self.settings.video_height - self.settings.caption_margin_bottom)
-                    )
+                    # Center on screen
+                    txt_clip = txt_clip.set_position(("center", "center"))
                     txt_clip = txt_clip.set_start(caption.start_time)
                     txt_clip = txt_clip.set_duration(caption.end_time - caption.start_time)
 
@@ -379,6 +403,68 @@ class VideoRenderer:
 
             except Exception as e:
                 logger.warning(f"Failed to create caption clip: {e}")
+                continue
+
+        return clips
+
+    def _create_countdown_clips(self, duration: float) -> list[TextClip]:
+        """Create countdown timer clips at top center.
+
+        Args:
+            duration: Total video duration
+
+        Returns:
+            List of countdown TextClip objects
+        """
+        clips = []
+
+        # Random starting number between 8 and 20
+        start_num = random.randint(8, 20)
+
+        # Start countdown 2 seconds into the video
+        start_time = 2.0
+
+        # Each number shows for 1 second
+        for i, num in enumerate(range(start_num, 0, -1)):
+            current_time = start_time + i
+
+            # Don't show countdown past video duration
+            if current_time >= duration - 1:
+                break
+
+            try:
+                # MoviePy 2.x API
+                try:
+                    countdown_clip = TextClip(
+                        text=str(num),
+                        font_size=80,
+                        color="white",
+                        font=self.settings.caption_font,
+                        stroke_color="black",
+                        stroke_width=4,
+                    )
+                    # Position at top center (100px from top)
+                    countdown_clip = countdown_clip.with_position(("center", 100))
+                    countdown_clip = countdown_clip.with_start(current_time)
+                    countdown_clip = countdown_clip.with_duration(1.0)
+                except TypeError:
+                    # MoviePy 1.x fallback
+                    countdown_clip = TextClip(
+                        str(num),
+                        fontsize=80,
+                        color="white",
+                        font=self.settings.caption_font,
+                        stroke_color="black",
+                        stroke_width=4,
+                    )
+                    countdown_clip = countdown_clip.set_position(("center", 100))
+                    countdown_clip = countdown_clip.set_start(current_time)
+                    countdown_clip = countdown_clip.set_duration(1.0)
+
+                clips.append(countdown_clip)
+
+            except Exception as e:
+                logger.warning(f"Failed to create countdown clip: {e}")
                 continue
 
         return clips

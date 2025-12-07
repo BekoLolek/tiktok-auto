@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     temp_dir: str = "/data/temp"
 
     # Caption settings (DejaVu available in container via fonts-dejavu-core)
-    caption_font: str = "DejaVu-Sans-Bold"
+    caption_font: str = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
     caption_font_size: int = 60
     caption_color: str = "white"
     caption_stroke_color: str = "black"
