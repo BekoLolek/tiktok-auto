@@ -407,8 +407,36 @@ function buildHashtags(video) {
 }
 
 // Start server
-const server = app.listen(config.port, () => {
+const server = app.listen(config.port, async () => {
   logger.info(`Uploader service listening on port ${config.port}`);
+
+  // Auto-start login flow if running in non-headless mode
+  if (!config.browser.headless) {
+    logger.info('Non-headless mode detected, starting login flow...');
+    let uploader = null;
+    try {
+      uploader = new TikTokUploader(logger);
+      await uploader.init();
+
+      const isLoggedIn = await uploader.isLoggedIn();
+      if (isLoggedIn) {
+        logger.info('Already logged in to TikTok!');
+        await uploader.close();
+      } else {
+        logger.info('Not logged in. Browser opened - please log in to TikTok manually.');
+        logger.info('After logging in, the session will be saved automatically.');
+        // Wait for manual login (5 minutes timeout)
+        await uploader.waitForManualLogin(300000);
+        logger.info('Login successful! You can now stop the server (Ctrl+C).');
+        await uploader.close();
+      }
+    } catch (error) {
+      logger.error('Login flow failed', { error: error.message });
+      if (uploader) {
+        await uploader.close().catch(() => {});
+      }
+    }
+  }
 });
 
 // Graceful shutdown

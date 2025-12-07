@@ -9,7 +9,7 @@ const config = require('./config');
 const session = require('./session');
 
 const TIKTOK_UPLOAD_URL = 'https://www.tiktok.com/upload';
-const TIKTOK_CREATOR_URL = 'https://www.tiktok.com/creator';
+const TIKTOK_HOME_URL = 'https://www.tiktok.com';
 
 /**
  * TikTok Uploader class
@@ -78,7 +78,7 @@ class TikTokUploader {
    */
   async isLoggedIn() {
     try {
-      await this.page.goto(TIKTOK_CREATOR_URL, {
+      await this.page.goto(TIKTOK_HOME_URL, {
         waitUntil: 'networkidle2',
         timeout: 30000,
       });
@@ -141,7 +141,7 @@ class TikTokUploader {
   async waitForManualLogin(timeoutMs = 300000) {
     this.logger.info('Waiting for manual login...', { timeout: timeoutMs });
 
-    await this.page.goto('https://www.tiktok.com/login', {
+    await this.page.goto(TIKTOK_HOME_URL, {
       waitUntil: 'networkidle2',
     });
 
