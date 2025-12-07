@@ -4,8 +4,7 @@ import logging
 import os
 from typing import Any
 
-from celery import chain, group
-from celery.exceptions import MaxRetriesExceededError
+from celery import chain
 
 from .app import app
 
@@ -335,10 +334,10 @@ def process_scripts_to_videos(self, process_result: dict[str, Any]) -> dict[str,
     Returns:
         Dict with all video IDs
     """
+    from shared.python.db import StoryStatus, update_story_progress
+
     from services.tts_service.src.synthesizer import TTSSynthesizer
     from services.video_renderer.src.renderer import VideoRenderer
-
-    from shared.python.db import StoryStatus, update_story_progress
 
     script_ids = process_result.get("script_ids", [])
     story_id = process_result.get("story_id")
