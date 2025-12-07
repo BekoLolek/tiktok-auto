@@ -83,12 +83,52 @@ class TikTokUploader {
         timeout: 30000,
       });
 
-      // Check for login indicators
-      const loginButton = await this.page.$('[data-e2e="top-login-button"]');
-      const isLoggedIn = !loginButton;
+      // Check for multiple login indicators (TikTok UI changes frequently)
+      const loginIndicators = [
+        '[data-e2e="top-login-button"]',
+        'button[data-e2e="login-button"]',
+        'a[href*="/login"]',
+        '[class*="login-button"]',
+        '[class*="LoginButton"]',
+      ];
 
-      this.logger.info('Login check', { isLoggedIn });
-      return isLoggedIn;
+      // Check for logged-in indicators
+      const loggedInIndicators = [
+        '[data-e2e="upload-icon"]',
+        '[data-e2e="profile-icon"]',
+        '[class*="avatar"]',
+        '[class*="Avatar"]',
+        'a[href*="/upload"]',
+      ];
+
+      // First check if we see logged-in indicators
+      for (const selector of loggedInIndicators) {
+        const element = await this.page.$(selector);
+        if (element) {
+          this.logger.info('Login check: found logged-in indicator', { selector });
+          return true;
+        }
+      }
+
+      // Then check if we see login prompts (means not logged in)
+      for (const selector of loginIndicators) {
+        const element = await this.page.$(selector);
+        if (element) {
+          this.logger.info('Login check: found login button', { selector });
+          return false;
+        }
+      }
+
+      // Check URL - if redirected to login page, not logged in
+      const currentUrl = this.page.url();
+      if (currentUrl.includes('/login') || currentUrl.includes('login_redirect')) {
+        this.logger.info('Login check: redirected to login page');
+        return false;
+      }
+
+      // If we can't determine, assume NOT logged in to be safe
+      this.logger.warn('Login check: could not determine login status, assuming not logged in');
+      return false;
     } catch (error) {
       this.logger.error('Login check failed', { error: error.message });
       return false;
