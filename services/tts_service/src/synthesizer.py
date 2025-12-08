@@ -1,13 +1,15 @@
-"""TTS synthesizer module using Edge TTS (Microsoft Neural Voices)."""
+"""TTS synthesizer module using gTTS (Google Text-to-Speech)."""
 
 from __future__ import annotations
 
-import asyncio
 import logging
+import subprocess
+import tempfile
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
-import edge_tts
+from gtts import gTTS
 from mutagen.mp3 import MP3
 
 from shared.python.db import Audio, Script, get_session
@@ -31,62 +33,38 @@ class AudioResult:
     voice_model: str
 
 
-class EdgeTTSClient:
-    """Client for Edge TTS (Microsoft Neural Voices)."""
+class GTTSClient:
+    """Client for Google Text-to-Speech."""
 
-    def __init__(self, rate: str = "+0%", pitch: str = "+0Hz"):
-        """Initialize Edge TTS client.
+    def __init__(self):
+        """Initialize gTTS client."""
+        pass
 
-        Args:
-            rate: Speech rate adjustment (e.g., "+10%", "-20%")
-            pitch: Pitch adjustment (e.g., "+5Hz", "-10Hz")
-        """
-        self.rate = rate
-        self.pitch = pitch
-
-    def synthesize(self, text: str, voice: str, output_path: str) -> None:
+    def synthesize(self, text: str, lang: str, output_path: str) -> None:
         """Synthesize text to audio file.
 
         Args:
             text: Text to synthesize
-            voice: Voice name (e.g., "en-US-ChristopherNeural")
-            output_path: Path to save the audio file
+            lang: Language code (e.g., 'en')
+            output_path: Path to save the audio file (MP3)
         """
-        asyncio.run(self._synthesize_async(text, voice, output_path))
-
-    async def _synthesize_async(self, text: str, voice: str, output_path: str) -> None:
-        """Async implementation of synthesize."""
-        communicate = edge_tts.Communicate(
-            text=text,
-            voice=voice,
-            rate=self.rate,
-            pitch=self.pitch,
-        )
-        await communicate.save(output_path)
-
-    @staticmethod
-    async def list_voices() -> list[dict]:
-        """List available voices."""
-        voices = await edge_tts.list_voices()
-        return voices
+        tts = gTTS(text=text, lang=lang, slow=False)
+        tts.save(output_path)
 
 
 class TTSSynthesizer:
-    """Synthesizes scripts to audio using Edge TTS."""
+    """Synthesizes scripts to audio using gTTS."""
 
     def __init__(self, settings: Settings | None = None):
         """Initialize synthesizer with settings."""
         self.settings = settings or get_settings()
-        self._client: EdgeTTSClient | None = None
+        self._client: GTTSClient | None = None
 
     @property
-    def client(self) -> EdgeTTSClient:
-        """Lazy-load Edge TTS client."""
+    def client(self) -> GTTSClient:
+        """Lazy-load gTTS client."""
         if self._client is None:
-            self._client = EdgeTTSClient(
-                rate=self.settings.voice_rate,
-                pitch=self.settings.voice_pitch,
-            )
+            self._client = GTTSClient()
         return self._client
 
     def synthesize(self, script_id: str) -> str:
@@ -112,8 +90,9 @@ class TTSSynthesizer:
                 "cta": script.cta,
             }
 
-        # Select voice based on script setting
-        voice = self._get_voice(script_data["voice_gender"])
+        # gTTS uses language codes, not voice names
+        lang = "en"
+        voice_model = "gtts-en"
 
         # Combine hook, content, and CTA for full narration
         full_text = self._build_narration_text_from_dict(script_data)
@@ -122,7 +101,7 @@ class TTSSynthesizer:
             f"Synthesizing script {script_id}",
             extra={
                 "script_id": script_id,
-                "voice": voice,
+                "voice": voice_model,
                 "text_length": len(full_text),
             },
         )
@@ -133,16 +112,20 @@ class TTSSynthesizer:
 
         # Generate audio
         try:
-            self.client.synthesize(full_text, voice, str(audio_path))
+            self.client.synthesize(full_text, lang, str(audio_path))
         except Exception as e:
             logger.error(f"Synthesis failed: {e}")
             raise
+
+        # Apply speed adjustment if configured
+        if self.settings.audio_speed != 1.0:
+            audio_path = self._speed_up_audio(audio_path, self.settings.audio_speed)
 
         # Calculate duration
         duration = self._get_audio_duration(str(audio_path))
 
         # Save to database and get audio ID
-        audio_id = self._save_audio_record(script_id, str(audio_path), duration, voice)
+        audio_id = self._save_audio_record(script_id, str(audio_path), duration, voice_model)
 
         logger.info(
             f"Synthesized script {script_id}",
@@ -155,12 +138,6 @@ class TTSSynthesizer:
         )
 
         return audio_id
-
-    def _get_voice(self, voice_gender: str | None) -> str:
-        """Get voice name based on gender."""
-        if voice_gender == "female":
-            return self.settings.female_voice
-        return self.settings.male_voice
 
     def _build_narration_text_from_dict(self, script: dict) -> str:
         """Build full narration text from script data dict."""
@@ -202,6 +179,49 @@ class TTSSynthesizer:
             logger.warning(f"Could not get audio duration: {e}")
             # Return estimate based on text (fallback)
             return 0.0
+
+    def _speed_up_audio(self, audio_path: Path, speed: float) -> Path:
+        """Speed up audio using ffmpeg atempo filter.
+
+        Args:
+            audio_path: Path to original audio file
+            speed: Speed multiplier (e.g., 1.25 for 25% faster)
+
+        Returns:
+            Path to the sped-up audio file (same path, file replaced)
+        """
+        logger.info(f"Speeding up audio to {speed}x", extra={"speed": speed})
+
+        # Create temp file for output
+        temp_output = audio_path.parent / f"temp_{audio_path.name}"
+
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", str(audio_path),
+            "-filter:a", f"atempo={speed}",
+            "-vn",
+            str(temp_output)
+        ]
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=True
+            )
+
+            # Replace original with sped-up version
+            temp_output.replace(audio_path)
+            logger.info(f"Audio sped up successfully to {speed}x")
+            return audio_path
+
+        except subprocess.CalledProcessError as e:
+            logger.error(f"ffmpeg speed adjustment failed: {e.stderr}")
+            # Clean up temp file if it exists
+            if temp_output.exists():
+                temp_output.unlink()
+            raise RuntimeError(f"Failed to speed up audio: {e.stderr}")
 
     def _save_audio_record(
         self, script_id: str, file_path: str, duration: float, voice: str

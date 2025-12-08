@@ -29,8 +29,8 @@ RUN pip install --no-cache-dir \
     pydantic-settings>=2.0.0 \
     # Text processor dependencies
     httpx>=0.25.0 \
-    # TTS dependencies (Edge TTS - Microsoft neural voices)
-    edge-tts>=6.1.0 \
+    # TTS dependencies (Google TTS)
+    gTTS>=2.5.0 \
     mutagen>=1.47.0 \
     # Video renderer dependencies
     moviepy>=1.0.3 \

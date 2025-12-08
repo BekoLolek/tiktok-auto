@@ -176,7 +176,7 @@ Respond in JSON format:
 {{
     "hook": "An attention-grabbing opening line (5-10 words)",
     "content": "The enhanced story text for narration",
-    "cta": "A call-to-action for viewers (follow for part 2, like if you enjoyed, etc.)"
+    "cta": "Follow me for more stories!"
 }}"""
 
         response = self.ollama.generate(prompt, self.SYSTEM_PROMPT)
@@ -266,7 +266,7 @@ Respond in JSON format:
         """Build prompt for multi-part processing."""
         # Determine the CTA based on position
         if is_last:
-            cta_instruction = "Like and follow for more stories!"
+            cta_instruction = "Follow me for more stories!"
         else:
             next_part = part_number + 1
             cta_instruction = f"Follow for part {next_part}!"
@@ -411,7 +411,7 @@ Respond in JSON format:
         return {
             "hook": hook_match.group(1) if hook_match else "You won't believe this story...",
             "content": content_match.group(1) if content_match else response,
-            "cta": cta_match.group(1) if cta_match else "Follow for more stories!",
+            "cta": cta_match.group(1) if cta_match else "Follow me for more stories!",
         }
 
     def _save_scripts(self, story_id: str, scripts: list[ProcessedScript]) -> list[str]:

@@ -254,6 +254,12 @@ class VideoRenderer:
         bg_path = random.choice(backgrounds)
         bg_clip = VideoFileClip(str(bg_path))
 
+        # Strip audio from background to avoid DMCA issues
+        try:
+            bg_clip = bg_clip.without_audio()  # MoviePy 2.x
+        except AttributeError:
+            bg_clip = bg_clip.set_audio(None)  # MoviePy 1.x fallback
+
         # Resize to fit TikTok dimensions (maintain aspect ratio, crop if needed)
         bg_clip = self._resize_and_crop(bg_clip)
 
@@ -357,18 +363,24 @@ class VideoRenderer:
             "#A8D8EA",  # light blue
         ]
 
+        # Calculate max width for captions (75% of video width for more padding)
+        max_caption_width = int(self.settings.video_width * 0.75)
+
+        # Position captions in the center-ish area with good margins
+        # TikTok UI takes up bottom ~200px, so center in safe zone
+        caption_y_position = int(self.settings.video_height * 0.40)
+
         for caption in captions:
             try:
                 # Pick a random color for this caption
                 caption_color = random.choice(caption_colors)
 
-                # Add padding character for descenders (y, g, j, p, q, commas)
-                # This prevents the bottom of letters from being cut off
-                padded_text = caption.text + " "
+                # Add padding for descenders (y, g, j, p, q) and extra line height
+                padded_text = caption.text
 
                 # MoviePy 2.x has different API than 1.x
                 try:
-                    # MoviePy 2.x API - use method="label" for better text rendering
+                    # MoviePy 2.x API - use size parameter to constrain width
                     txt_clip = TextClip(
                         text=padded_text,
                         font_size=self.settings.caption_font_size,
@@ -378,9 +390,12 @@ class VideoRenderer:
                         stroke_width=self.settings.caption_stroke_width,
                         text_align="center",
                         horizontal_align="center",
+                        size=(max_caption_width, None),  # Constrain width, auto height
+                        method="caption",  # Enables text wrapping
+                        margin=(20, 20),  # Add margin for descenders
                     )
-                    # MoviePy 2.x uses with_* methods - center on screen
-                    txt_clip = txt_clip.with_position(("center", "center"))
+                    # MoviePy 2.x uses with_* methods - center horizontally, fixed Y
+                    txt_clip = txt_clip.with_position(("center", caption_y_position))
                     txt_clip = txt_clip.with_start(caption.start_time)
                     txt_clip = txt_clip.with_duration(caption.end_time - caption.start_time)
                 except TypeError:
@@ -393,9 +408,11 @@ class VideoRenderer:
                         stroke_color=self.settings.caption_stroke_color,
                         stroke_width=self.settings.caption_stroke_width,
                         align="center",
+                        size=(max_caption_width, None),  # Constrain width
+                        method="caption",  # Enables text wrapping
                     )
-                    # Center on screen
-                    txt_clip = txt_clip.set_position(("center", "center"))
+                    # Center horizontally, fixed Y position
+                    txt_clip = txt_clip.set_position(("center", caption_y_position))
                     txt_clip = txt_clip.set_start(caption.start_time)
                     txt_clip = txt_clip.set_duration(caption.end_time - caption.start_time)
 
@@ -437,27 +454,27 @@ class VideoRenderer:
                 try:
                     countdown_clip = TextClip(
                         text=str(num),
-                        font_size=80,
+                        font_size=120,
                         color="white",
                         font=self.settings.caption_font,
                         stroke_color="black",
-                        stroke_width=4,
+                        stroke_width=5,
                     )
-                    # Position at top center (100px from top)
-                    countdown_clip = countdown_clip.with_position(("center", 100))
+                    # Position at top center (200px from top - below top UI elements)
+                    countdown_clip = countdown_clip.with_position(("center", 200))
                     countdown_clip = countdown_clip.with_start(current_time)
                     countdown_clip = countdown_clip.with_duration(1.0)
                 except TypeError:
                     # MoviePy 1.x fallback
                     countdown_clip = TextClip(
                         str(num),
-                        fontsize=80,
+                        fontsize=120,
                         color="white",
                         font=self.settings.caption_font,
                         stroke_color="black",
-                        stroke_width=4,
+                        stroke_width=5,
                     )
-                    countdown_clip = countdown_clip.set_position(("center", 100))
+                    countdown_clip = countdown_clip.set_position(("center", 200))
                     countdown_clip = countdown_clip.set_start(current_time)
                     countdown_clip = countdown_clip.set_duration(1.0)
 

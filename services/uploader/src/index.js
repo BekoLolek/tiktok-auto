@@ -447,6 +447,16 @@ function buildDescription(video) {
     parts.push(`From r/${video.subreddit}`);
   }
 
+  // Add original author credit
+  if (video.story_author) {
+    parts.push(`by u/${video.story_author}`);
+  }
+
+  // Add original post link
+  if (video.story_url) {
+    parts.push(`\nOriginal: ${video.story_url}`);
+  }
+
   return parts.join(' | ');
 }
 

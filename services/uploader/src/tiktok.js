@@ -572,18 +572,31 @@ class TikTokUploader {
   async waitForPostConfirmation(context) {
     this.logger.info('Waiting for post confirmation...');
 
-    const maxWaitTime = 60000;
+    const maxWaitTime = 120000; // Increased to 2 minutes for video processing
     const startTime = Date.now();
+    let lastScreenshotTime = 0;
 
     while (Date.now() - startTime < maxWaitTime) {
+      // Take periodic debug screenshots
+      if (Date.now() - lastScreenshotTime > 15000) {
+        try {
+          const elapsed = Math.floor((Date.now() - startTime) / 1000);
+          await this.page.screenshot({ path: getDebugPath(`debug_waiting_${elapsed}s.png`), fullPage: true });
+          this.logger.info(`Debug screenshot at ${elapsed}s saved`);
+          lastScreenshotTime = Date.now();
+        } catch (e) {}
+      }
+
       // Check for success message or redirect
       const currentUrl = this.page.url();
+      this.logger.info('Checking URL for video redirect...', { url: currentUrl.substring(0, 80) });
 
       if (currentUrl.includes('/video/')) {
         // Extract video ID from URL
         const videoIdMatch = currentUrl.match(/\/video\/(\d+)/);
         const platformVideoId = videoIdMatch ? videoIdMatch[1] : null;
 
+        this.logger.info('SUCCESS: Redirected to video page!', { platformVideoId });
         return {
           success: true,
           platformVideoId,
@@ -591,59 +604,90 @@ class TikTokUploader {
         };
       }
 
-      // Check for success indicators
-      const successSelectors = [
-        '[class*="success"]',
-        '[class*="posted"]',
-        '[data-e2e="upload-success"]',
+      // Check for video link on the page (TikTok sometimes shows a link instead of redirecting)
+      try {
+        const videoLink = await this.page.$('a[href*="/video/"]');
+        if (videoLink) {
+          const href = await this.page.evaluate(el => el.href, videoLink);
+          if (href && href.includes('/video/')) {
+            const videoIdMatch = href.match(/\/video\/(\d+)/);
+            if (videoIdMatch) {
+              this.logger.info('SUCCESS: Found video link on page!', { href });
+              return {
+                success: true,
+                platformVideoId: videoIdMatch[1],
+                platformUrl: href,
+              };
+            }
+          }
+        }
+      } catch (e) {
+        // Continue checking
+      }
+
+      // Handle "Continue to post?" modal - click "Post now" to skip content check
+      await this.handleContinueToPostModal();
+
+      // Check for "Your video is being uploaded" or "Processing" messages (not success yet)
+      const processingSelectors = [
+        '[class*="processing"]',
+        '[class*="uploading"]',
+        '[class*="progress"]',
       ];
 
-      for (const selector of successSelectors) {
-        const element = await context.$(selector);
+      let isStillProcessing = false;
+      for (const selector of processingSelectors) {
+        const element = await this.page.$(selector);
         if (element) {
-          // Try to extract video URL from page
-          const videoLink = await context.$('a[href*="/video/"]');
-          if (videoLink) {
-            const href = await context.evaluate(el => el.href, videoLink);
-            const videoIdMatch = href.match(/\/video\/(\d+)/);
-
-            return {
-              success: true,
-              platformVideoId: videoIdMatch ? videoIdMatch[1] : null,
-              platformUrl: href,
-            };
-          }
-
-          return {
-            success: true,
-            platformVideoId: null,
-            platformUrl: null,
-          };
+          this.logger.info('Video still processing...', { selector });
+          isStillProcessing = true;
+          break;
         }
       }
 
-      // Check for error
+      // Check for error messages
       const errorSelectors = [
         '[class*="error-message"]',
         '[class*="upload-error"]',
         '[data-e2e="upload-error"]',
+        '[class*="failed"]',
       ];
 
       for (const selector of errorSelectors) {
-        const element = await context.$(selector);
+        const element = await this.page.$(selector);
         if (element) {
-          const errorText = await context.evaluate(
+          const errorText = await this.page.evaluate(
             el => el.textContent,
             element
           );
+          this.logger.error('Upload error detected', { errorText });
+          await this.page.screenshot({ path: getDebugPath('debug_upload_failed.png'), fullPage: true });
           throw new Error(`Post failed: ${errorText}`);
         }
       }
 
-      await this.sleep(2000);
+      // Check if we're back on the upload page (means post failed silently)
+      if (currentUrl.includes('/upload') && !isStillProcessing) {
+        // Check if the upload form is empty (video cleared)
+        const fileInput = await this.page.$('input[type="file"]');
+        const uploadPrompt = await this.page.$('[class*="upload-card"]');
+        if (fileInput && uploadPrompt) {
+          // We're back to upload page with empty form - something went wrong
+          const elapsed = Math.floor((Date.now() - startTime) / 1000);
+          if (elapsed > 30) {
+            this.logger.warn('Back on upload page with empty form - post may have failed');
+            await this.page.screenshot({ path: getDebugPath('debug_back_to_upload.png'), fullPage: true });
+          }
+        }
+      }
+
+      await this.sleep(3000);
     }
 
-    throw new Error('Post confirmation timeout');
+    // Timeout - take final screenshot
+    await this.page.screenshot({ path: getDebugPath('debug_post_timeout.png'), fullPage: true });
+    this.logger.error('Post confirmation timeout - no video URL found');
+    throw new Error('Post confirmation timeout - video URL not found. Check debug screenshots.');
   }
 
   /**
@@ -651,6 +695,11 @@ class TikTokUploader {
    */
   async dismissBanners() {
     this.logger.info('Checking for banners to dismiss...');
+
+    // Take debug screenshot before dismissing
+    try {
+      await this.page.screenshot({ path: getDebugPath('debug_before_dismiss.png'), fullPage: true });
+    } catch (e) {}
 
     // 1. Dismiss cookie consent banner first (at bottom of page)
     try {
@@ -668,7 +717,11 @@ class TikTokUploader {
       this.logger.info('No cookie banner or already dismissed');
     }
 
-    // 2. Dismiss "unsaved editing" notification - click Discard on top banner
+    // 2. Handle "Discard this post?" modal FIRST - this blocks everything
+    // The modal has "Not now" and "Discard" buttons
+    await this.dismissDiscardModal();
+
+    // 3. Dismiss "unsaved editing" notification - click Discard on top banner
     try {
       let buttons = await this.page.$$('button');
       for (const btn of buttons) {
@@ -686,29 +739,14 @@ class TikTokUploader {
             await btn.click();
             this.logger.info('Clicked Discard on top notification bar');
             await this.sleep(1500);
+            // Check if a confirmation modal appeared
+            await this.dismissDiscardModal();
             break;
           }
         }
       }
     } catch (err) {
       this.logger.info('No unsaved editing notification');
-    }
-
-    // 3. Handle "Discard this post?" confirmation modal if it appears
-    try {
-      const buttons = await this.page.$$('button');
-      for (const btn of buttons) {
-        const text = await this.page.evaluate(el => el.textContent, btn);
-        // Look for the red Discard button in the confirmation modal
-        if (text && text.trim().toLowerCase() === 'discard') {
-          await btn.click();
-          this.logger.info('Clicked Discard in confirmation modal');
-          await this.sleep(1500);
-          break;
-        }
-      }
-    } catch (err) {
-      this.logger.info('No confirmation modal');
     }
 
     // 4. Handle "Turn on automatic content checks?" modal - click "Turn on"
@@ -727,7 +765,7 @@ class TikTokUploader {
       this.logger.info('No content checks modal');
     }
 
-    // 4. Double-check: dismiss any remaining modals/popups
+    // 5. Double-check: dismiss any remaining modals/popups
     try {
       const closeSelectors = [
         '[aria-label="Close"]',
@@ -748,6 +786,74 @@ class TikTokUploader {
     }
 
     await this.sleep(1000);
+  }
+
+  /**
+   * Handle "Continue to post?" modal - click "Post now" to skip waiting for content check
+   */
+  async handleContinueToPostModal() {
+    try {
+      const pageContent = await this.page.content();
+      if (pageContent.includes('Continue to post?') || pageContent.includes('continue posting before the check')) {
+        this.logger.info('Found "Continue to post?" modal - clicking Post now');
+
+        const buttons = await this.page.$$('button');
+        for (const btn of buttons) {
+          const text = await this.page.evaluate(el => el.textContent, btn);
+          const normalized = text ? text.trim().toLowerCase() : '';
+
+          if (normalized === 'post now') {
+            this.logger.info('Clicking "Post now" button to skip content check');
+            await btn.click();
+            await this.sleep(3000);
+            return true;
+          }
+        }
+      }
+    } catch (err) {
+      this.logger.info('No "Continue to post?" modal or error:', err.message);
+    }
+    return false;
+  }
+
+  /**
+   * Specifically handle "Discard this post?" confirmation modal
+   */
+  async dismissDiscardModal() {
+    try {
+      // Look for modal with "Discard this post?" text
+      const pageContent = await this.page.content();
+      if (pageContent.includes('Discard this post?') || pageContent.includes('discarded permanently')) {
+        this.logger.info('Found "Discard this post?" modal');
+
+        // Find all buttons and look for the red Discard button
+        const buttons = await this.page.$$('button');
+        for (const btn of buttons) {
+          const text = await this.page.evaluate(el => el.textContent, btn);
+          const normalized = text ? text.trim().toLowerCase() : '';
+
+          // Click the Discard button (usually red/styled differently)
+          if (normalized === 'discard') {
+            // Check if it's the modal button (not top bar button)
+            const rect = await this.page.evaluate(el => {
+              const r = el.getBoundingClientRect();
+              return { top: r.top };
+            }, btn);
+
+            // Modal buttons are usually in the middle of the screen (y > 200)
+            if (rect.top > 200) {
+              this.logger.info('Clicking Discard button in modal');
+              await btn.click();
+              await this.sleep(2000);
+              return true;
+            }
+          }
+        }
+      }
+    } catch (err) {
+      this.logger.info('No discard modal or error handling it:', err.message);
+    }
+    return false;
   }
 
   /**

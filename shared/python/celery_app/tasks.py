@@ -146,8 +146,8 @@ def generate_audio(self, script_id: str) -> dict[str, Any]:
     default_retry_delay=60,
     autoretry_for=(TransientError,),
     retry_backoff=True,
-    soft_time_limit=300,
-    time_limit=600,
+    soft_time_limit=900,  # 15 minutes for CPU Whisper transcription
+    time_limit=1800,  # 30 minutes hard limit
 )
 def render_video(self, audio_id: str) -> dict[str, Any]:
     """

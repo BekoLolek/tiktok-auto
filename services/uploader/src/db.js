@@ -33,7 +33,7 @@ const UploadStatus = {
 async function getVideo(videoId) {
   const result = await pool.query(
     `SELECT v.*, a.script_id, s.story_id, s.part_number, s.total_parts, s.hook, s.content, s.cta,
-            st.title as story_title, st.subreddit
+            st.title as story_title, st.subreddit, st.author as story_author, st.url as story_url
      FROM videos v
      JOIN audio a ON v.audio_id = a.id
      JOIN scripts s ON a.script_id = s.id
