@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import subprocess
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -204,7 +203,7 @@ class TTSSynthesizer:
         ]
 
         try:
-            result = subprocess.run(
+            subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
@@ -221,7 +220,7 @@ class TTSSynthesizer:
             # Clean up temp file if it exists
             if temp_output.exists():
                 temp_output.unlink()
-            raise RuntimeError(f"Failed to speed up audio: {e.stderr}")
+            raise RuntimeError(f"Failed to speed up audio: {e.stderr}") from e
 
     def _save_audio_record(
         self, script_id: str, file_path: str, duration: float, voice: str
