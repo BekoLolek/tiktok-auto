@@ -1,7 +1,6 @@
 """Tests for Prometheus metrics module."""
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 
 class TestMetricsCollector:
