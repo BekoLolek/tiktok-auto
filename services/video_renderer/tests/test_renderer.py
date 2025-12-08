@@ -76,16 +76,16 @@ class TestRenderResult:
     def test_create_result(self):
         """Test creating a RenderResult."""
         result = RenderResult(
-            script_id=1,
+            audio_id="123e4567-e89b-12d3-a456-426614174000",
+            video_id="223e4567-e89b-12d3-a456-426614174001",
             video_path="/data/videos/video_1.mp4",
             duration_seconds=180.5,
-            width=1080,
-            height=1920,
+            resolution="1080x1920",
         )
 
-        assert result.script_id == 1
+        assert result.audio_id == "123e4567-e89b-12d3-a456-426614174000"
         assert result.duration_seconds == 180.5
-        assert result.width == 1080
+        assert result.resolution == "1080x1920"
 
 
 class TestWhisperTranscriber:
@@ -194,8 +194,8 @@ class TestVideoRenderer:
         assert renderer.settings == settings
 
     @patch("services.video_renderer.src.renderer.get_session")
-    def test_render_video_script_not_found(self, mock_get_session, renderer):
-        """Test rendering non-existent script."""
+    def test_render_audio_not_found(self, mock_get_session, renderer):
+        """Test rendering non-existent audio."""
         mock_session = MagicMock()
         mock_context = MagicMock()
         mock_context.__enter__ = MagicMock(return_value=mock_session)
@@ -203,24 +203,8 @@ class TestVideoRenderer:
         mock_get_session.return_value = mock_context
         mock_session.get.return_value = None
 
-        with pytest.raises(ValueError, match="Script 999 not found"):
-            renderer.render_video(999)
-
-    @patch("services.video_renderer.src.renderer.get_session")
-    def test_render_video_no_audio(self, mock_get_session, renderer):
-        """Test rendering script without audio."""
-        mock_session = MagicMock()
-        mock_context = MagicMock()
-        mock_context.__enter__ = MagicMock(return_value=mock_session)
-        mock_context.__exit__ = MagicMock(return_value=False)
-        mock_get_session.return_value = mock_context
-
-        mock_script = MagicMock()
-        mock_session.get.return_value = mock_script
-        mock_session.query.return_value.filter.return_value.first.return_value = None
-
-        with pytest.raises(ValueError, match="No audio found"):
-            renderer.render_video(1)
+        with pytest.raises(ValueError, match="Audio .* not found"):
+            renderer.render("123e4567-e89b-12d3-a456-426614174000")
 
     def test_create_solid_background(self, renderer):
         """Test creating solid color background."""
@@ -235,26 +219,28 @@ class TestVideoRenderer:
         mock_clip = MagicMock()
         mock_clip.w = 1920
         mock_clip.h = 1080
-        mock_clip.resize.return_value = mock_clip
-        mock_clip.crop.return_value = mock_clip
+        # MoviePy 2.x uses resized/cropped
+        mock_clip.resized.return_value = mock_clip
+        mock_clip.cropped.return_value = mock_clip
 
         renderer._resize_and_crop(mock_clip)
 
-        mock_clip.resize.assert_called_once()
-        mock_clip.crop.assert_called_once()
+        mock_clip.resized.assert_called_once()
+        mock_clip.cropped.assert_called_once()
 
     def test_resize_and_crop_taller_video(self, renderer):
         """Test resizing a taller video."""
         mock_clip = MagicMock()
         mock_clip.w = 1080
         mock_clip.h = 2400  # Taller than TikTok ratio
-        mock_clip.resize.return_value = mock_clip
-        mock_clip.crop.return_value = mock_clip
+        # MoviePy 2.x uses resized/cropped
+        mock_clip.resized.return_value = mock_clip
+        mock_clip.cropped.return_value = mock_clip
 
         renderer._resize_and_crop(mock_clip)
 
-        mock_clip.resize.assert_called_once()
-        mock_clip.crop.assert_called_once()
+        mock_clip.resized.assert_called_once()
+        mock_clip.cropped.assert_called_once()
 
     def test_create_caption_clips_empty(self, renderer):
         """Test creating caption clips with no captions."""
@@ -265,9 +251,10 @@ class TestVideoRenderer:
     def test_create_caption_clips_single(self, mock_text_clip, renderer):
         """Test creating a single caption clip."""
         mock_clip = MagicMock()
-        mock_clip.set_position.return_value = mock_clip
-        mock_clip.set_start.return_value = mock_clip
-        mock_clip.set_duration.return_value = mock_clip
+        # MoviePy 2.x uses with_* methods
+        mock_clip.with_position.return_value = mock_clip
+        mock_clip.with_start.return_value = mock_clip
+        mock_clip.with_duration.return_value = mock_clip
         mock_text_clip.return_value = mock_clip
 
         captions = [Caption(text="Test caption", start_time=1.0, end_time=3.0)]
@@ -275,8 +262,8 @@ class TestVideoRenderer:
 
         assert len(result) == 1
         mock_text_clip.assert_called_once()
-        mock_clip.set_start.assert_called_once_with(1.0)
-        mock_clip.set_duration.assert_called_once_with(2.0)
+        mock_clip.with_start.assert_called_once_with(1.0)
+        mock_clip.with_duration.assert_called_once_with(2.0)
 
     @patch("services.video_renderer.src.renderer.TextClip")
     def test_create_caption_clips_handles_errors(self, mock_text_clip, renderer):
@@ -299,15 +286,17 @@ class TestVideoRenderer:
         mock_context.__exit__ = MagicMock(return_value=False)
         mock_get_session.return_value = mock_context
 
-        result = RenderResult(
-            script_id=1,
-            video_path="/data/videos/video_1.mp4",
-            duration_seconds=120.0,
-            width=1080,
-            height=1920,
-        )
+        # Mock the Video model to return a mock with id
+        mock_video_instance = MagicMock()
+        mock_video_instance.id = "323e4567-e89b-12d3-a456-426614174002"
+        mock_video.return_value = mock_video_instance
 
-        renderer._save_video_record(result)
+        video_id = renderer._save_video_record(
+            audio_id="123e4567-e89b-12d3-a456-426614174000",
+            file_path="/data/videos/video_1.mp4",
+            duration=120.0,
+        )
 
         mock_session.add.assert_called_once()
         mock_session.commit.assert_called_once()
+        assert video_id == "323e4567-e89b-12d3-a456-426614174002"
