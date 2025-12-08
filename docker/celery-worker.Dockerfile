@@ -35,6 +35,8 @@ RUN pip install --no-cache-dir \
     # Video renderer dependencies
     moviepy>=1.0.3 \
     openai-whisper>=20231117 \
+    # Monitoring
+    prometheus-client>=0.19.0 \
     # Misc
     python-dotenv>=1.0.0
 

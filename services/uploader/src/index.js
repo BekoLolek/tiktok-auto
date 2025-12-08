@@ -10,6 +10,7 @@ const winston = require('winston');
 const config = require('./config');
 const db = require('./db');
 const TikTokUploader = require('./tiktok');
+const metrics = require('./metrics');
 
 const app = express();
 
@@ -26,6 +27,10 @@ const logger = winston.createLogger({
 
 // Middleware
 app.use(express.json());
+app.use(metrics.metricsMiddleware);
+
+// Metrics endpoint
+app.get('/metrics', metrics.getMetrics);
 
 // Request logging
 app.use((req, res, next) => {
@@ -69,23 +74,28 @@ app.post('/test-upload', async (req, res) => {
 
     // Check if logged in
     const isLoggedIn = await uploader.isLoggedIn();
+    metrics.setLoginStatus(isLoggedIn);
     if (!isLoggedIn) {
       logger.warn('Not logged in');
       await uploader.close();
+      metrics.recordUpload('manual_required');
       return res.json({
         status: 'manual_required',
         message: 'Login required - please authenticate manually',
       });
     }
 
-    // Perform upload
+    // Perform upload with timing
+    const endTimer = metrics.startUploadTimer();
     const result = await uploader.uploadVideo(videoPath, {
       title: title || 'Test Video',
       description: description || 'Test upload',
       hashtags: hashtags || ['test'],
     });
+    endTimer();
 
     await uploader.close();
+    metrics.recordUpload('success');
 
     return res.json({
       status: 'success',
@@ -94,6 +104,7 @@ app.post('/test-upload', async (req, res) => {
 
   } catch (error) {
     logger.error('Test upload failed', { error: error.message, stack: error.stack });
+    metrics.recordUpload('failed');
 
     if (uploader) {
       await uploader.close().catch(() => {});
