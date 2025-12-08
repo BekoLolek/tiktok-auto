@@ -1,7 +1,5 @@
 """Tests for TTS synthesizer module."""
 
-import io
-import wave
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -9,7 +7,7 @@ import pytest
 from services.tts_service.src.config import Settings
 from services.tts_service.src.synthesizer import (
     AudioResult,
-    PiperClient,
+    GTTSClient,
     TTSSynthesizer,
 )
 
@@ -32,8 +30,13 @@ class TestSettings:
     def test_default_voices(self):
         """Test default voice settings."""
         settings = Settings()
-        assert settings.male_voice == "en_US-lessac-medium"
-        assert settings.female_voice == "en_US-amy-medium"
+        assert settings.male_voice == "en-US-GuyNeural"
+        assert settings.female_voice == "en-US-JennyNeural"
+
+    def test_audio_speed_default(self):
+        """Test default audio speed setting."""
+        settings = Settings()
+        assert settings.audio_speed == 1.25
 
     def test_audio_path_creates_directory(self, tmp_path):
         """Test audio_path creates directory if needed."""
@@ -49,48 +52,39 @@ class TestAudioResult:
     def test_create_result(self):
         """Test creating an AudioResult."""
         result = AudioResult(
-            script_id=1,
-            audio_path="/data/audio/script_1.wav",
+            script_id="123e4567-e89b-12d3-a456-426614174000",
+            audio_id="223e4567-e89b-12d3-a456-426614174001",
+            audio_path="/data/audio/script_123.mp3",
             duration_seconds=120.5,
-            sample_rate=22050,
-            voice="en_US-lessac-medium",
+            voice_model="gtts-en",
         )
 
-        assert result.script_id == 1
+        assert result.script_id == "123e4567-e89b-12d3-a456-426614174000"
         assert result.duration_seconds == 120.5
-        assert result.voice == "en_US-lessac-medium"
+        assert result.voice_model == "gtts-en"
 
 
-class TestPiperClient:
-    """Tests for PiperClient."""
+class TestGTTSClient:
+    """Tests for GTTSClient."""
 
     def test_init(self):
         """Test client initialization."""
-        client = PiperClient("localhost", 10200)
-        assert client.host == "localhost"
-        assert client.port == 10200
+        client = GTTSClient()
+        # GTTSClient has no parameters in __init__
+        assert client is not None
 
-    @patch("socket.socket")
-    def test_health_check_success(self, mock_socket_class):
-        """Test health check when Piper is available."""
-        mock_socket = MagicMock()
-        mock_socket_class.return_value.__enter__ = MagicMock(return_value=mock_socket)
-        mock_socket_class.return_value.__exit__ = MagicMock(return_value=False)
+    @patch("services.tts_service.src.synthesizer.gTTS")
+    def test_synthesize(self, mock_gtts_class, tmp_path):
+        """Test synthesize creates audio file."""
+        mock_tts = MagicMock()
+        mock_gtts_class.return_value = mock_tts
 
-        client = PiperClient("localhost", 10200)
-        assert client.health_check() is True
+        client = GTTSClient()
+        output_path = str(tmp_path / "test.mp3")
+        client.synthesize("Hello world", "en", output_path)
 
-    @patch("socket.socket")
-    def test_health_check_failure(self, mock_socket_class):
-        """Test health check when Piper is unavailable."""
-
-        mock_socket = MagicMock()
-        mock_socket.connect.side_effect = OSError("Connection refused")
-        mock_socket_class.return_value.__enter__ = MagicMock(return_value=mock_socket)
-        mock_socket_class.return_value.__exit__ = MagicMock(return_value=False)
-
-        client = PiperClient("localhost", 10200)
-        assert client.health_check() is False
+        mock_gtts_class.assert_called_once_with(text="Hello world", lang="en", slow=False)
+        mock_tts.save.assert_called_once_with(output_path)
 
 
 class TestTTSSynthesizer:
@@ -100,9 +94,8 @@ class TestTTSSynthesizer:
     def settings(self, tmp_path):
         """Create test settings."""
         return Settings(
-            piper_host="localhost",
-            piper_port=10200,
             audio_output_dir=str(tmp_path / "audio"),
+            audio_speed=1.0,  # No speed adjustment for simpler testing
         )
 
     @pytest.fixture
@@ -114,29 +107,23 @@ class TestTTSSynthesizer:
         """Test synthesizer initializes with provided settings."""
         assert synthesizer.settings == settings
 
-    def test_get_voice_male(self, synthesizer):
-        """Test voice selection for male."""
-        voice = synthesizer._get_voice("male")
-        assert voice == "en_US-lessac-medium"
-
-    def test_get_voice_female(self, synthesizer):
-        """Test voice selection for female."""
-        voice = synthesizer._get_voice("female")
-        assert voice == "en_US-amy-medium"
-
-    def test_get_voice_default(self, synthesizer):
-        """Test voice selection defaults to male."""
-        voice = synthesizer._get_voice(None)
-        assert voice == "en_US-lessac-medium"
+    def test_client_lazy_loading(self, synthesizer):
+        """Test GTTSClient is lazily loaded."""
+        assert synthesizer._client is None
+        client = synthesizer.client
+        assert client is not None
+        assert isinstance(client, GTTSClient)
 
     def test_build_narration_text_full(self, synthesizer):
         """Test building narration text with all parts."""
-        mock_script = MagicMock()
-        mock_script.hook = "You won't believe this."
-        mock_script.content = "The main story content."
-        mock_script.cta = "Follow for more!"
+        script_data = {
+            "id": "123",
+            "hook": "You won't believe this.",
+            "content": "The main story content.",
+            "cta": "Follow for more!",
+        }
 
-        result = synthesizer._build_narration_text(mock_script)
+        result = synthesizer._build_narration_text_from_dict(script_data)
 
         assert "You won't believe this." in result
         assert "The main story content." in result
@@ -144,61 +131,32 @@ class TestTTSSynthesizer:
 
     def test_build_narration_text_no_hook(self, synthesizer):
         """Test building narration text without hook."""
-        mock_script = MagicMock()
-        mock_script.hook = None
-        mock_script.content = "The main story content."
-        mock_script.cta = "Follow for more!"
+        script_data = {
+            "id": "123",
+            "hook": None,
+            "content": "The main story content.",
+            "cta": "Follow for more!",
+        }
 
-        result = synthesizer._build_narration_text(mock_script)
+        result = synthesizer._build_narration_text_from_dict(script_data)
 
         assert "The main story content." in result
         assert "Follow for more!" in result
 
-    def test_wrap_in_wav(self, synthesizer):
-        """Test wrapping PCM data in WAV container."""
-        # Create some fake PCM data
-        pcm_data = b"\x00" * 4410  # 0.1 seconds at 22050 Hz, 16-bit
+    def test_build_narration_text_strips_hashtags(self, synthesizer):
+        """Test hashtags are stripped from narration."""
+        script_data = {
+            "id": "123",
+            "hook": "Amazing story!",
+            "content": "The content here.",
+            "cta": "Follow for more! #storytime #reddit",
+        }
 
-        result = synthesizer._wrap_in_wav(pcm_data)
+        result = synthesizer._build_narration_text_from_dict(script_data)
 
-        # Should start with RIFF header
-        assert result.startswith(b"RIFF")
-
-        # Should be valid WAV
-        buffer = io.BytesIO(result)
-        with wave.open(buffer, "rb") as wav:
-            assert wav.getnchannels() == 1
-            assert wav.getsampwidth() == 2
-            assert wav.getframerate() == 22050
-
-    def test_get_audio_duration(self, synthesizer):
-        """Test calculating audio duration."""
-        # Create a 1-second WAV file
-        buffer = io.BytesIO()
-        with wave.open(buffer, "wb") as wav:
-            wav.setnchannels(1)
-            wav.setsampwidth(2)
-            wav.setframerate(22050)
-            wav.writeframes(b"\x00" * 44100)  # 1 second
-
-        duration = synthesizer._get_audio_duration(buffer.getvalue())
-        assert abs(duration - 1.0) < 0.01
-
-    def test_save_audio(self, synthesizer, tmp_path):
-        """Test saving audio data to file."""
-        # Create valid WAV data
-        buffer = io.BytesIO()
-        with wave.open(buffer, "wb") as wav:
-            wav.setnchannels(1)
-            wav.setsampwidth(2)
-            wav.setframerate(22050)
-            wav.writeframes(b"\x00" * 4410)
-
-        audio_data = buffer.getvalue()
-        path = synthesizer._save_audio(123, audio_data)
-
-        assert path.exists()
-        assert "script_123" in str(path)
+        assert "#storytime" not in result
+        assert "#reddit" not in result
+        assert "Follow for more!" in result
 
     @patch("services.tts_service.src.synthesizer.get_session")
     def test_synthesize_script_not_found(self, mock_get_session, synthesizer):
@@ -211,38 +169,51 @@ class TestTTSSynthesizer:
         mock_session.get.return_value = None
 
         with pytest.raises(ValueError, match="Script 999 not found"):
-            synthesizer.synthesize_script(999)
+            synthesizer.synthesize("999")
 
+    @patch("services.tts_service.src.synthesizer.MP3")
     @patch("services.tts_service.src.synthesizer.Audio")
     @patch("services.tts_service.src.synthesizer.get_session")
-    def test_synthesize_script_success(self, mock_get_session, mock_audio, synthesizer, tmp_path):
+    def test_synthesize_success(
+        self, mock_get_session, mock_audio_class, mock_mp3, synthesizer
+    ):
         """Test successful script synthesis."""
+        # Set up mock session
         mock_session = MagicMock()
         mock_context = MagicMock()
         mock_context.__enter__ = MagicMock(return_value=mock_session)
         mock_context.__exit__ = MagicMock(return_value=False)
         mock_get_session.return_value = mock_context
 
+        # Mock script
         mock_script = MagicMock()
+        mock_script.id = "123e4567-e89b-12d3-a456-426614174000"
         mock_script.voice_gender = "male"
         mock_script.hook = "Hook"
         mock_script.content = "Content"
         mock_script.cta = "CTA"
-        mock_script.story_id = 1
         mock_session.get.return_value = mock_script
 
-        # Create valid WAV response
-        buffer = io.BytesIO()
-        with wave.open(buffer, "wb") as wav:
-            wav.setnchannels(1)
-            wav.setsampwidth(2)
-            wav.setframerate(22050)
-            wav.writeframes(b"\x00" * 4410)
+        # Mock MP3 duration
+        mock_mp3_instance = MagicMock()
+        mock_mp3_instance.info.length = 10.5
+        mock_mp3.return_value = mock_mp3_instance
 
+        # Mock Audio record
+        mock_audio = MagicMock()
+        mock_audio.id = "223e4567-e89b-12d3-a456-426614174001"
+        mock_audio_class.return_value = mock_audio
+
+        # Mock the client
         synthesizer._client = MagicMock()
-        synthesizer._client.synthesize.return_value = buffer.getvalue()
 
-        result = synthesizer.synthesize_script(1)
+        result = synthesizer.synthesize("123e4567-e89b-12d3-a456-426614174000")
 
-        assert result.script_id == 1
-        assert result.voice == "en_US-lessac-medium"
+        assert result == str(mock_audio.id)
+        synthesizer._client.synthesize.assert_called_once()
+
+    def test_get_audio_duration_fallback(self, synthesizer, tmp_path):
+        """Test duration fallback when file cannot be read."""
+        # Non-existent file should return 0.0
+        duration = synthesizer._get_audio_duration("/nonexistent/path.mp3")
+        assert duration == 0.0
