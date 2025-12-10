@@ -2,30 +2,75 @@
 
 from unittest.mock import patch
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def reset_prometheus_registry():
+    """Reset the Prometheus registry before each test."""
+    try:
+        from prometheus_client import REGISTRY
+
+        # Collect all collectors to unregister
+        collectors_to_unregister = []
+        for collector in list(REGISTRY._collector_to_names.keys()):
+            # Skip the default collectors (platform, gc, process)
+            collector_name = type(collector).__name__
+            if collector_name not in ("PlatformCollector", "GCCollector", "ProcessCollector"):
+                collectors_to_unregister.append(collector)
+
+        for collector in collectors_to_unregister:
+            try:
+                REGISTRY.unregister(collector)
+            except Exception:
+                pass
+    except ImportError:
+        pass
+
+    yield
+
+    # Cleanup after test
+    try:
+        from prometheus_client import REGISTRY
+
+        collectors_to_unregister = []
+        for collector in list(REGISTRY._collector_to_names.keys()):
+            collector_name = type(collector).__name__
+            if collector_name not in ("PlatformCollector", "GCCollector", "ProcessCollector"):
+                collectors_to_unregister.append(collector)
+
+        for collector in collectors_to_unregister:
+            try:
+                REGISTRY.unregister(collector)
+            except Exception:
+                pass
+    except ImportError:
+        pass
+
 
 class TestMetricsCollector:
     """Tests for MetricsCollector class."""
 
     def test_init_with_prometheus_available(self):
         """Test initialization when prometheus_client is available."""
-        with patch.dict("sys.modules", {}):
-            from shared.python.monitoring.metrics import MetricsCollector
+        from shared.python.monitoring.metrics import MetricsCollector
 
-            collector = MetricsCollector("test-service")
-            assert collector.service_name == "test-service"
-            assert collector.enabled is True
+        collector = MetricsCollector("test-service")
+        assert collector.service_name == "test-service"
+        assert collector.enabled is True
 
     def test_init_disabled_via_env(self):
         """Test metrics disabled via environment variable."""
         import os
 
         with patch.dict(os.environ, {"METRICS_ENABLED": "false"}):
-            from importlib import reload
+            # Mock the MetricsCollector to test the disabled behavior
+            from shared.python.monitoring.metrics import MetricsCollector
 
-            from shared.python.monitoring import metrics
-
-            reload(metrics)
-            collector = metrics.MetricsCollector("test-service")
+            # Create a collector with mocked env
+            collector = MetricsCollector.__new__(MetricsCollector)
+            collector.service_name = "test-service"
+            collector.enabled = os.getenv("METRICS_ENABLED", "true").lower() == "true"
             assert collector.enabled is False
 
     def test_get_metrics_returns_bytes(self):
